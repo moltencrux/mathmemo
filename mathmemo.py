@@ -121,6 +121,9 @@ def render_latex_as_svg(latex_formula):
     return svg_image
 
 class FormulaList(QListWidget):
+    SvgRole = Qt.UserRole
+    FormulaRole = Qt.UserRole + 1
+
     def __init__(self, parent=None, formulas=[]):
         super().__init__(parent)
         #self.itemSelectionChanged.connect()
@@ -153,6 +156,7 @@ class FormulaList(QListWidget):
         #self.setStyleSheet("QListWidget::item:selected { background-color: red; }")
         #self.setStyleSheet("QListWidget { background-color: white; }")
         #self.setStyleSheet('QListView::item:selected { border : 2px solid red; background : green; }')
+        """ diabling temporarily 
         self.setStyleSheet("QListWidget"
                                   "{"
                                   "background : white;"
@@ -167,12 +171,50 @@ class FormulaList(QListWidget):
                                   "background : green;"
                                   "}"
                                   )
+       """
 
         # pal = self.palette()
         # pal.setColor(self.backgroundRole(), Qt.white)
         # self.setPalette(pal)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.listContextMenuReuquested)
+        self.itemSelectionChanged.connect(self.itemChanged)
+
+    def itemChanged(self):
+
+        for item in [self.item(i) for i in range(self.count())]:
+            svg_widget = self.itemWidget(item)
+            if item.isSelected():
+                #item.setBackgroundColor(Qt.green)
+                #svg_widget.setStyleSheet("QSvgWidget { background: cyan; }")
+                #svg_widget.setAutoFillBackground(True)
+                #pal = QPalette(svg_widget.palette())
+                # svg_widget.palette().Background.setColor(QColor('cyan'))
+                #pal.setColor(QPalette.Background, QColor('cyan'))
+                # svg_widget.setPalette(pal)
+                # pal = QPalette()
+                svg_widget.setBackgroundRole(QPalette.Highlight)
+                svg_widget.setForegroundRole(QPalette.HighlightedText)
+
+            else:
+                # svg_widget.setStyleSheet("QSvgWidget { background: white; }")
+                svg_widget.setForegroundRole(QPalette.BrightText)
+                svg_widget.setBackgroundRole(QPalette.Base)
+
+        # order: [group]role
+        #c = pal.color(QPalette.Window, QPalette.Highlight)
+        # c = pal.color(QPalette.Highlight)
+        # print('color: ', c)
+        # print('color: ', QPalette.Highlight)
+        print('type h: ', type(QPalette.Highlight))
+        print('type w: ', type(QPalette.WindowText))
+        #print('type: ', type(QPalette.Highlight))
+        # QPalette.Highlight
+        # QPalette.HighlightedText
+        #pal = QPalette(svg_widget.palette())
+        #pal.setColor(QPalette.Window, QColor('red'))
+        #svg_widget.setPalette(pal)
+        #svg_widget.setAutoFillBackground(True)
 
     def listContextMenuReuquested(self, pos):
         print('context menu requested')
@@ -180,20 +222,17 @@ class FormulaList(QListWidget):
         pos = self.mapFromGlobal(QCursor.pos())
         row = self.indexAt(pos).row()
 
-        menu = QMenu(self)
+        self.cmenu = QMenu(self)
+        menu = self.cmenu
         copy_svg_act = menu.addAction('Copy SVG')
         copy_img_act = menu.addAction('Copy Image')
         copy_eq_act = menu.addAction('Copy Equation')
+        menu.addSeparator()
         delete_act = menu.addAction('Delete')
-        disabled = menu.addAction('Disabled')
 
         if row < 0:
             for action in [copy_svg_act, copy_img_act, copy_eq_act, delete_act]:
                 action.setDisabled(True)
-
-        disabled.setDisabled(True)
-
-        menu.addAction(copy_eq_act)
 
 
         action = menu.exec_(self.mapToGlobal(pos))
@@ -213,6 +252,8 @@ class FormulaList(QListWidget):
         print('copySVG called ', index)
 
         item = self.item(index)
+        svg = item.data(self.SvgRole)
+
         svg_widget = self.itemWidget(item)
 
         # create a QSvgRenderer and set it to the QSvgWidget
@@ -223,10 +264,12 @@ class FormulaList(QListWidget):
         mime_data = QMimeData()
         print("copySVG: image type: ", type(self.images[index]))
         # mime_data.setData("image/svg+xml", self.images[index])
-        mime_data.setData("image/svg", self.images[index].replace(b'currentColor', b'red')) # works for Anki
+        mime_data.setData("image/svg", svg.replace(b'currentColor', b'red')) # works for Anki
+        ##  data:image/svg+xml ???
+
         # mime_data.setData("image/svg+xml", self.images[index].replace(b'currentColor', b'red'))
-        #mime_data.setData("image/svg+xml", b'<?xml version="1.0" encoding="utf-8" standalone="no"?> <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><!-- Created with matplotlib (http://matplotlib.org/) --><svg height="344.88pt" version="1.1" viewBox="0 0 460.8 344.88" width="460.8pt" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">')
-        #mime_data.setData("image/svg", b'<?xml version="1.0" encoding="utf-8" standalone="no"?> <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><!-- Created with matplotlib (http://matplotlib.org/) --><svg height="344.88pt" version="1.1" viewBox="0 0 460.8 344.88" width="460.8pt" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">')
+        # mime_data.setData("image/svg+xml"
+        # mime_data.setData("image/svg"
 
         # get the system clipboard and set the QMimeData object
         clipboard = app.clipboard()
@@ -241,18 +284,14 @@ class FormulaList(QListWidget):
         # more.  Mozilla seems to be fine with it tho
 
         item = self.item(index)
-        svg_widget = self.itemWidget(item)
-
-        # create a QSvgRenderer and set it to the QSvgWidget
+        svg = item.data(self.SvgRole)
+        renderer = QSvgRenderer()
+        renderer.load(svg.replace(b'currentColor', b'white'))
 
         # Render the SVG into a QImage
-        svg_widget = QSvgWidget()
-        svg_widget.load(self.images[index].replace(b'currentColor', b'red'))
-        image = QImage(svg_widget.size() * 0.5, QImage.Format_RGB666)
+        image = QImage(renderer.defaultSize() * 0.2, QImage.Format_RGB666)
 
         painter = QPainter(image)
-        #renderer = QSvgRenderer(svgWidget.renderer())
-        renderer = svg_widget.renderer()
         renderer.render(painter)
         painter.end()
         app.clipboard().setImage(image)
@@ -260,7 +299,8 @@ class FormulaList(QListWidget):
 
     def copyEquation(self, index):
 
-        formula = self.formulas[index]
+        item = self.item(index)
+        formula = item.data(self.FormulaRole)
 
         app.clipboard().setText(self.formulas[index])
         #app.clipboard().setText(formula) # this worked
@@ -279,7 +319,7 @@ class FormulaList(QListWidget):
     #def contextMenuEvent(self, a0: QtGui.QContextMenuEvent) -> None:
     #    ...
 
-    def append_formula_svg_mpl(self, formula):
+    def append_formula_svg_matplotlib(self, formula):
         self.formulas.append(formula)
         svg = QSvgWidget()
         svg_data = render_latex_as_svg(formula)
@@ -291,39 +331,39 @@ class FormulaList(QListWidget):
 
     def append_formula_svg(self, formula, svg:bytes):
 
+        item = QListWidgetItem()
+        item.setData(self.FormulaRole, formula)
+        item.setData(self.SvgRole, svg)
+
         self.formulas.append(formula)
         self.images.append(svg)
         svg_widget = QSvgWidget()
+
+        # This can replace the color in the svg data
+        # svg = svg.replace(b'currentColor', b'red')
+
         svg_widget.load(svg)
         svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
-        # svg_widget.renderer().set
-        # QSvgRenderer.set
         svg_widget.renderer().setViewBox(svg_widget.renderer().viewBox().adjusted(0, -200, 0, 200))
         svg_widget.setFixedHeight( svg_widget.renderer().defaultSize().height() // 24)
+
         # effectively adds padding around the QSvgWidget
         print("view box: ", svg_widget.renderer().viewBox())
 
         print("sfh resized: ", svg_widget.renderer().defaultSize().height())
-        # svg_widget.setFixedHeight( svg_widget.renderer().defaultSize().height() // 24)
         policy = QSizePolicy()
         # policy.setWidthForHeight(True)
         # policy.setHorizontalPolicy(QSizePolicy.)
         policy.setVerticalPolicy(QSizePolicy.Fixed)
         # svg_widget.setSizePolicy(policy)
 
-        # why does this have no effect?
-        pal = QPalette(svg_widget.palette())
-        pal.setColor(QPalette.Window, QColor('red'))
-        svg_widget.setPalette(pal)
-        svg_widget.setAutoFillBackground(True)
+        # this works, but disabling temporarily, might be overriding sth
+        #self.setStyleSheet("QSvgWidget { background: white; }")
 
-
-        self.setStyleSheet("QSvgWidget { background: cyan; }")
 
         print('svg sizeHint: ', svg_widget.sizeHint())
 
         print('svg_widegt size hint: ', svg_widget.sizeHint())
-        item = QListWidgetItem()
         # item.setContentsMargins(0, 5, 0, 5)  #no effect?
         item.setSizeHint(QSize(0, svg_widget.renderer().defaultSize().height() // 24))
         #self.setStyleSheet("QListWidgetItem:item { selection-background-color: blue; }")
