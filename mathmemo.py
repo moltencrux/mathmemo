@@ -126,8 +126,9 @@ class FormulaList(QListWidget):
 
     def __init__(self, parent=None, formulas=[]):
         super().__init__(parent)
-        #self.itemSelectionChanged.connect()
-        #self.selectionChanged.connect
+
+        self.clipboard = app.clipboard()
+
         # self.setSizeAdjustPolicy(QListWidget.SizeAdjustPolicy.AdjustToContents)
         self.currentItemChanged.connect(lambda: print("QLW: Item Changed Signal"))
         self.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
@@ -137,15 +138,10 @@ class FormulaList(QListWidget):
         # self.setStyleSheet("QListWidget::item:selected { background-color: red; }")
         self.setSpacing(1)
 
-        # self.setLayout(QVBoxLayout())
-        # self.layout().setSpacing(10)
-        # self.layout().addStretch(1)
-        #frame = QFrame()
         self.setViewMode(QListWidget.ListMode)
-        self.views = []
-        self.formulas = []
-        self.images = []
-        self.page_template = page_template
+        # self.formulas = []
+        # self.images = []
+
         for formula in formulas:
             self.append_formula(formula)
 
@@ -249,33 +245,24 @@ class FormulaList(QListWidget):
 
 
     def copySvg(self, index):
-        print('copySVG called ', index)
 
         item = self.item(index)
         svg = item.data(self.SvgRole)
 
-        svg_widget = self.itemWidget(item)
-
-        # create a QSvgRenderer and set it to the QSvgWidget
-        svg_renderer = svg_widget.renderer()
-        # svg_widget.setSharedRenderer(svg_renderer)
-
         # create a QMimeData object and set the SVG data
         mime_data = QMimeData()
-        print("copySVG: image type: ", type(self.images[index]))
+        print("copySVG: image type: ", type(self.itemWidget(item)))
         # mime_data.setData("image/svg+xml", self.images[index])
         mime_data.setData("image/svg", svg.replace(b'currentColor', b'red')) # works for Anki
-        ##  data:image/svg+xml ???
 
         # mime_data.setData("image/svg+xml", self.images[index].replace(b'currentColor', b'red'))
         # mime_data.setData("image/svg+xml"
         # mime_data.setData("image/svg"
 
         # get the system clipboard and set the QMimeData object
-        clipboard = app.clipboard()
-        clipboard.setMimeData(mime_data)
-        # print('clipboard data: ', clipboard.mimeData().data())
-        if clipboard.mimeData().hasImage():
+        self.clipboard.setMimeData(mime_data)
+
+        if self.clipboard.mimeData().hasImage():
             print('has image')
 
 
@@ -290,10 +277,11 @@ class FormulaList(QListWidget):
 
         # Render the SVG into a QImage
         image = QImage(renderer.defaultSize() * 0.2, QImage.Format_RGB666)
-
         painter = QPainter(image)
         renderer.render(painter)
         painter.end()
+
+        # Copy image to clipboard
         app.clipboard().setImage(image)
         print('copyImage called ', index)
 
@@ -302,32 +290,23 @@ class FormulaList(QListWidget):
         item = self.item(index)
         formula = item.data(self.FormulaRole)
 
-        app.clipboard().setText(self.formulas[index])
-        #app.clipboard().setText(formula) # this worked
+        app.clipboard().setText(formula)
 
-        print('all', self.formulas)
-        print('copyEquation called ', self.formulas[index])
+        print('copyEquation called ', self.formula)
 
     def deleteEquation(self, index):
-        self.formulas.pop(index)
+        # self.formulas.pop(index)
         self.images.pop(index)
         self.takeItem(index)
 
-
-        print('deleteEquation called ', index)
-
-    #def contextMenuEvent(self, a0: QtGui.QContextMenuEvent) -> None:
-    #    ...
-
     def append_formula_svg_matplotlib(self, formula):
-        self.formulas.append(formula)
+        # self.formulas.append(formula)
         svg = QSvgWidget()
         svg_data = render_latex_as_svg(formula)
         svg.load(svg_data)
         svg.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
         # svg.sizeHint() returns (460, 345)
         self.layout().addWidget(svg)
-        self.views.append(svg)
 
     def append_formula_svg(self, formula, svg:bytes):
 
@@ -335,8 +314,8 @@ class FormulaList(QListWidget):
         item.setData(self.FormulaRole, formula)
         item.setData(self.SvgRole, svg)
 
-        self.formulas.append(formula)
-        self.images.append(svg)
+        # self.formulas.append(formula)
+        # self.images.append(svg)
         svg_widget = QSvgWidget()
 
         # This can replace the color in the svg data
@@ -372,20 +351,8 @@ class FormulaList(QListWidget):
         self.addItem(item)
         self.setItemWidget(item, svg_widget)
 
-        self.views.append(item)
         self.scrollToBottom()
 
-    def append_formula(self, formula):
-        self.formulas.append(formula)
-        view = QWebEngineView()
-        view.setFixedHeight(200)
-        # view.setAttribute(QWebEngineSettings.ShowScrollBars)
-        view.settings().setAttribute(QWebEngineSettings.ShowScrollBars, False)
-        # view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        view.setHtml(self.page_template.format(formula=formula), QUrl('file://'))
-        self.views.append(view)
-        self.layout().addWidget(view)
-        print(view.page().toHtml(QString()))
 
     def append_label(self, label):
         object = QLabel("TextLabel: " + label)
