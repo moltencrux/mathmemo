@@ -7,6 +7,7 @@ from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QI
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineSettings
 from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
 from io import BytesIO
+from texsyntax import LatexHighlighter
 import matplotlib.pyplot as plt
 
 from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, QScrollArea,QApplication,
@@ -144,7 +145,6 @@ class FormulaList(QListWidget):
 
         for formula in formulas:
             self.append_formula(formula)
-
         # self.setAutoFillBackground(True);
         ######
         #self.setAttribute(Qt.WA_StyledBackground, True)
@@ -152,22 +152,16 @@ class FormulaList(QListWidget):
         #self.setStyleSheet("QListWidget::item:selected { background-color: red; }")
         #self.setStyleSheet("QListWidget { background-color: white; }")
         #self.setStyleSheet('QListView::item:selected { border : 2px solid red; background : green; }')
-        """ diabling temporarily 
         self.setStyleSheet("QListWidget"
                                   "{"
                                   "background : white;"
                                   "}"
-                                  "QListWidget QScrollBar"
-                                  "{"
-                                  "background : lightblue;"
-                                  "}"
                                   "QListView::item:selected"
                                   "{"
-                                  "border : 8px solid red;"
-                                  "background : green;"
+                                  "border : 2px solid blue;"
+                                  "background : lightblue;"
                                   "}"
                                   )
-       """
 
         # pal = self.palette()
         # pal.setColor(self.backgroundRole(), Qt.white)
@@ -189,13 +183,16 @@ class FormulaList(QListWidget):
                 #pal.setColor(QPalette.Background, QColor('cyan'))
                 # svg_widget.setPalette(pal)
                 # pal = QPalette()
-                svg_widget.setBackgroundRole(QPalette.Highlight)
-                svg_widget.setForegroundRole(QPalette.HighlightedText)
+
+                #svg_widget.setBackgroundRole(QPalette.Highlight)
+                #svg_widget.setForegroundRole(QPalette.HighlightedText)
+                ...
 
             else:
                 # svg_widget.setStyleSheet("QSvgWidget { background: white; }")
-                svg_widget.setForegroundRole(QPalette.BrightText)
-                svg_widget.setBackgroundRole(QPalette.Base)
+                #svg_widget.setForegroundRole(QPalette.BrightText)
+                #svg_widget.setBackgroundRole(QPalette.Base)
+                ...
 
         # order: [group]role
         #c = pal.color(QPalette.Window, QPalette.Highlight)
@@ -296,7 +293,7 @@ class FormulaList(QListWidget):
 
     def deleteEquation(self, index):
         # self.formulas.pop(index)
-        self.images.pop(index)
+        # self.images.pop(index)
         self.takeItem(index)
 
     def append_formula_svg_matplotlib(self, formula):
@@ -379,6 +376,8 @@ class MainEqWindow(QMainWindow):
         self.widget.setLayout(QVBoxLayout())
 
         self.input_box = QPlainTextEdit()
+        self.highlight = LatexHighlighter(self.input_box.document())
+
         self.preview = QWebEngineView()
         self.render = QWebEngineView()
 
