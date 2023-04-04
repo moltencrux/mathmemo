@@ -145,13 +145,6 @@ class FormulaList(QListWidget):
 
         for formula in formulas:
             self.append_formula(formula)
-        # self.setAutoFillBackground(True);
-        ######
-        #self.setAttribute(Qt.WA_StyledBackground, True)
-        # self.setStyleSheet('background-color: white;')
-        #self.setStyleSheet("QListWidget::item:selected { background-color: red; }")
-        #self.setStyleSheet("QListWidget { background-color: white; }")
-        #self.setStyleSheet('QListView::item:selected { border : 2px solid red; background : green; }')
         self.setStyleSheet("QListWidget"
                                   "{"
                                   "background : white;"
@@ -163,9 +156,6 @@ class FormulaList(QListWidget):
                                   "}"
                                   )
 
-        # pal = self.palette()
-        # pal.setColor(self.backgroundRole(), Qt.white)
-        # self.setPalette(pal)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.listContextMenuReuquested)
         self.itemSelectionChanged.connect(self.itemChanged)
@@ -328,22 +318,13 @@ class FormulaList(QListWidget):
 
         print("sfh resized: ", svg_widget.renderer().defaultSize().height())
         policy = QSizePolicy()
-        # policy.setWidthForHeight(True)
-        # policy.setHorizontalPolicy(QSizePolicy.)
         policy.setVerticalPolicy(QSizePolicy.Fixed)
-        # svg_widget.setSizePolicy(policy)
-
-        # this works, but disabling temporarily, might be overriding sth
-        #self.setStyleSheet("QSvgWidget { background: white; }")
-
 
         print('svg sizeHint: ', svg_widget.sizeHint())
 
         print('svg_widegt size hint: ', svg_widget.sizeHint())
         # item.setContentsMargins(0, 5, 0, 5)  #no effect?
         item.setSizeHint(QSize(0, svg_widget.renderer().defaultSize().height() // 24))
-        #self.setStyleSheet("QListWidgetItem:item { selection-background-color: blue; }")
-        #self.setStyleSheet("QListView::item:selected { background-color: blue; }")
 
         self.addItem(item)
         self.setItemWidget(item, svg_widget)
@@ -399,8 +380,6 @@ class MainEqWindow(QMainWindow):
         self.widget.layout().addWidget(self.preview)
         self.widget.layout().addWidget(self.input_box)
         self.setCentralWidget(self.widget)
-        # self.input_box.installEventFilter(self)
-        #self.show()
         # self.preview.page().loadFinished.connect(self._on_load_finished)
         print('connecting')
         self.render.loadFinished.connect(self._on_load_finished)
@@ -408,7 +387,7 @@ class MainEqWindow(QMainWindow):
         self.input_box.textChanged.connect(self.updatePreview)
 
     def append_content(self, content):
-        # Append the message to the conversation
+        # Append the formula to the list box
         content_html= f"{content}<br>"
         if '\\(' in content and '\\)' in content:
             # Use MathJax to render math expressions enclosed in \( and \)
@@ -416,15 +395,6 @@ class MainEqWindow(QMainWindow):
         # js_code = f"document.body.innerHTML += '{content_html}'; MathJax.typeset();"
         # self.text_area.page().runJavaScript(js_code)
         self.eq_box.append_formula(content)
-        # self.formula.append_label(content)
-        # self.formula.append_formula_old(content)
-        # Scroll to the bottom of the conversation
-        # self.text_area.page().runJavaScript("window.scrollTo(0, document.body.scrollHeight);")
-        # self.scroll.verticalScrollBar().setValue() #setAlignment(Qt.AlignBottom)
-        # const scrollArea = this.$refs.chatScroll;
-        # const scrollTarget = scrollArea.getScrollTarget();
-        # const duration = 300; // ms - use 0 to instant scroll
-        # scrollArea.setScrollPosition(scrollTarget.scrollHeight, duration);
 
     def updatePreview(self):
         formula_str = self.input_box.toPlainText()
