@@ -379,6 +379,7 @@ class MainEqWindow(QMainWindow):
         self.widget.layout().addWidget(self.eq_box)
         self.widget.layout().addWidget(self.preview)
         self.widget.layout().addWidget(self.input_box)
+        self.widget.setSizes([400, 400, 200])
         self.setCentralWidget(self.widget)
         # self.preview.page().loadFinished.connect(self._on_load_finished)
         print('connecting')
