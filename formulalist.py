@@ -1,16 +1,9 @@
 #import sys
-from PyQt5.QtCore import Qt, QSize, QMimeData\
-#from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData
+
+from PyQt5.QtWidgets import qApp, QListWidget, QLabel, QSizePolicy, QAbstractItemView, QListWidgetItem, QMenu
+from PyQt5.QtCore import Qt, QSize, QMimeData
 from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter
-#from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
-#from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineSettings
-#from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
-
-#from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, QScrollArea,QApplication,
-#                             QHBoxLayout, QVBoxLayout, QMainWindow, QSizePolicy, QAbstractItemView)
-
-from PyQt5.QtWidgets import (qApp, QListWidget, QLabel, QSizePolicy, QAbstractItemView, QListWidgetItem)
 
 
 class FormulaList(QListWidget):
@@ -161,7 +154,7 @@ class FormulaList(QListWidget):
         painter.end()
 
         # Copy image to clipboard
-        app.clipboard().setImage(image)
+        self.clipboard.setImage(image)
         print('copyImage called ', index)
 
     def copyEquation(self, index):

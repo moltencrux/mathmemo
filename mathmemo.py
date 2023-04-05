@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, Q
 from PyQt5 import QtWidgets, uic
 
 from formulalist import FormulaList
+from mainwindow_ui import Ui_MainWindow
 
 from pysvg.parser import parse
 
@@ -123,7 +124,7 @@ def render_latex_as_svg(latex_formula):
     plt.close(fig)
     return svg_image
 
-class MainEqWindow(QMainWindow):
+class MainEqWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -133,47 +134,45 @@ class MainEqWindow(QMainWindow):
         self.svg_queue = []
 
     def initUI(self):
-        file = self.menuBar().addMenu('&File')
-        edit = self.menuBar().addMenu('&Edit')
-        settings = edit.addAction('&Settings')
+        self.setupUi(self)
 
         #settings.triggered.connect(
         #    lambda: QMessageBox().information(self, 'settings', 'settings', QMessageBox.StandardButton.Ok,
         #                                    QMessageBox.StandardButton.Ok))
 
-        self.widget = QSplitter(Qt.Vertical)
+        # self.widget = QSplitter(Qt.Vertical)
 
         # sp = QSizePolicy()
         # sp.setVerticalStretch(255)
         # self.widget.setSizePolicy(sp)
 
-        self.widget.setLayout(QVBoxLayout())
+        # self.widget.setLayout(QVBoxLayout())
 
-        self.input_box = QPlainTextEdit()
+        # self.input_box = QPlainTextEdit()
         self.highlight = LatexHighlighter(self.input_box.document())
 
-        self.preview = QWebEngineView()
+        # self.preview = QWebEngineView()
         self.render = QWebEngineView()
 
         #self.preview.setFixedHeight(200)
         # self.preview.setAttribute(QWebEngineSettings.ShowScrollBars)
-        self.preview.settings().setAttribute(QWebEngineSettings.ShowScrollBars, False)
+        ###self.preview.settings().setAttribute(QWebEngineSettings.ShowScrollBars, False)
         # self.preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        self.input_box.setPlaceholderText("Enter a formula here...")
+        ###self.input_box.setPlaceholderText("Enter a formula here...")
         self.input_box.installEventFilter(self)
         # sp = QSizePolicy()
         # sp.setVerticalStretch(0)
         # self.input_box.setSizePolicy(sp)
 
-        self.eq_box= FormulaList()
+        #self.eq_box= FormulaList()
 
-        self.widget.layout().addStretch(1)
-        self.widget.layout().addWidget(self.eq_box)
-        self.widget.layout().addWidget(self.preview)
-        self.widget.layout().addWidget(self.input_box)
-        self.widget.setSizes([400, 400, 200])
-        self.setCentralWidget(self.widget)
+        ###self.centralwidget.layout().addStretch(1)
+        ###self.centralwidget.layout().addWidget(self.eq_box)
+        ###self.centralwidget.layout().addWidget(self.preview)
+        ###self.centralwidget.layout().addWidget(self.input_box)
+        ###self.centralwidget.setSizes([400, 400, 200])
+        ###self.setCentralWidget(self.widget)
         # self.preview.page().loadFinished.connect(self._on_load_finished)
         print('connecting')
         self.render.loadFinished.connect(self._on_load_finished)

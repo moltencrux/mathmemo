@@ -38,7 +38,7 @@
       <property name="orientation">
        <enum>Qt::Vertical</enum>
       </property>
-      <widget class="FormulaList" name="listWidget">
+      <widget class="FormulaList" name="eq_box">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
          <horstretch>0</horstretch>
@@ -46,7 +46,7 @@
         </sizepolicy>
        </property>
       </widget>
-      <widget class="QWebEngineView" name="webEngineView">
+      <widget class="QWebEngineView" name="preview">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
          <horstretch>1</horstretch>
@@ -65,7 +65,7 @@
          <number>0</number>
         </property>
         <item>
-         <widget class="QPlainTextEdit" name="plainTextEdit">
+         <widget class="QPlainTextEdit" name="input_box">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -204,7 +204,7 @@
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="../../test.qrc"/>
+  <include location="icons/mathmemo.qrc"/>
  </resources>
  <connections/>
 </ui>
