@@ -347,6 +347,13 @@ class MainEqWindow(QMainWindow):
         self.svg_queue = []
 
     def initUI(self):
+        file = self.menuBar().addMenu('&File')
+        edit = self.menuBar().addMenu('&Edit')
+        settings = edit.addAction('&Settings')
+
+        #settings.triggered.connect(
+        #    lambda: QMessageBox().information(self, 'settings', 'settings', QMessageBox.StandardButton.Ok,
+        #                                    QMessageBox.StandardButton.Ok))
 
         self.widget = QSplitter(Qt.Vertical)
 
