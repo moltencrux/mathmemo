@@ -17,6 +17,7 @@ from PyQt5 import QtWidgets, uic
 
 from formulalist import FormulaList
 from mainwindow_ui import Ui_MainWindow
+from settings_ui import Ui_settings
 
 from pysvg.parser import parse
 
@@ -159,7 +160,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         ###self.preview.settings().setAttribute(QWebEngineSettings.ShowScrollBars, False)
         # self.preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        ###self.input_box.setPlaceholderText("Enter a formula here...")
+        #self.input_box.setPlaceholderText("Enter a formula here...")
         self.input_box.installEventFilter(self)
         # sp = QSizePolicy()
         # sp.setVerticalStretch(0)
@@ -171,13 +172,21 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         ###self.centralwidget.layout().addWidget(self.eq_box)
         ###self.centralwidget.layout().addWidget(self.preview)
         ###self.centralwidget.layout().addWidget(self.input_box)
-        ###self.centralwidget.setSizes([400, 400, 200])
         ###self.setCentralWidget(self.widget)
+
+        # sets proportions for the eq list, preview & input widgets
+        self.splitter.setSizes([500, 350, 150])
         # self.preview.page().loadFinished.connect(self._on_load_finished)
         print('connecting')
         self.render.loadFinished.connect(self._on_load_finished)
 
         self.input_box.textChanged.connect(self.updatePreview)
+
+        # settings UI
+        self.settings_ui = Ui_settings()
+        self.settings_dialog = QDialog()
+        self.settings_ui.setupUi(self.settings_dialog)
+        self.actionSettings.triggered.connect(self.settings_dialog.show)
 
     def append_content(self, content):
         # Append the formula to the list box
