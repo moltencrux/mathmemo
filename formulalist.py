@@ -162,7 +162,7 @@ class FormulaList(QListWidget):
         item = self.item(index)
         formula = item.data(self.FormulaRole)
 
-        app.clipboard().setText(formula)
+        qApp.clipboard().setText(formula)
 
         print('copyEquation called ', self.formula)
 
