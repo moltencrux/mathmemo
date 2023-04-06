@@ -137,42 +137,15 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def initUI(self):
         self.setupUi(self)
 
-        #settings.triggered.connect(
-        #    lambda: QMessageBox().information(self, 'settings', 'settings', QMessageBox.StandardButton.Ok,
-        #                                    QMessageBox.StandardButton.Ok))
-
-        # self.widget = QSplitter(Qt.Vertical)
-
-        # sp = QSizePolicy()
-        # sp.setVerticalStretch(255)
-        # self.widget.setSizePolicy(sp)
-
-        # self.widget.setLayout(QVBoxLayout())
-
-        # self.input_box = QPlainTextEdit()
         self.highlight = LatexHighlighter(self.input_box.document())
 
-        # self.preview = QWebEngineView()
+        # use a separate QWebEngineView for rendering.  Might could be a QWebEnginePage
         self.render = QWebEngineView()
 
-        #self.preview.setFixedHeight(200)
-        # self.preview.setAttribute(QWebEngineSettings.ShowScrollBars)
-        ###self.preview.settings().setAttribute(QWebEngineSettings.ShowScrollBars, False)
-        # self.preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         #self.input_box.setPlaceholderText("Enter a formula here...")
+
         self.input_box.installEventFilter(self)
-        # sp = QSizePolicy()
-        # sp.setVerticalStretch(0)
-        # self.input_box.setSizePolicy(sp)
-
-        #self.eq_box= FormulaList()
-
-        ###self.centralwidget.layout().addStretch(1)
-        ###self.centralwidget.layout().addWidget(self.eq_box)
-        ###self.centralwidget.layout().addWidget(self.preview)
-        ###self.centralwidget.layout().addWidget(self.input_box)
-        ###self.setCentralWidget(self.widget)
 
         # sets proportions for the eq list, preview & input widgets
         self.splitter.setSizes([500, 350, 150])
