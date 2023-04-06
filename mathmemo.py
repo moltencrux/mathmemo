@@ -2,7 +2,7 @@
 
 import sys
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData
+from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
 from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineSettings
 from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
@@ -140,8 +140,11 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.highlight = LatexHighlighter(self.input_box.document())
 
         # use a separate QWebEngineView for rendering.  Might could be a QWebEnginePage
-        self.render = QWebEngineView()
+        # I think I did it like this because I was worried that the page processing was
+        # asynchronous and worried if we started to enter a new formula very quickly, that
+        # it might interfere with what got inserted into the list.
 
+        self.render = QWebEnginePage()
 
         #self.input_box.setPlaceholderText("Enter a formula here...")
 
@@ -151,6 +154,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.splitter.setSizes([500, 350, 150])
         # self.preview.page().loadFinished.connect(self._on_load_finished)
         print('connecting')
+        # self.render.loadFinished.connect(self._on_load_finished)
         self.render.loadFinished.connect(self._on_load_finished)
 
         self.input_box.textChanged.connect(self.updatePreview)
@@ -184,27 +188,27 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         if event.type() == QEvent.KeyPress and obj is self.input_box:
             if event.key() == Qt.Key_Return and self.input_box.hasFocus():
                 if event.modifiers() & Qt.ControlModifier:
-                    # event.accept() # not sure what this was doing.  it didn't solve the \n issue
-                    # print('Shift+Enter pressed')
-                    formula_str = self.input_box.toPlainText()
-
-                    if formula_str:
-                        print('appending formula: ', formula_str)
-                        self.eq_queue.append(formula_str)
-                        print('svg: ', self.formula_svg)
-                        self.input_box.clear()
-
-                    self.render.setHtml(self.page_template.format(formula=formula_str),
-                                         QUrl('file://'))
+                    self.add_current_formula()
                     return True # this seems to delete the trailing \n.. interesting
 
         return super().eventFilter(obj, event)
 
+    def add_current_formula(self):
+        formula_str = self.input_box.toPlainText()
+
+        if formula_str:
+            print('appending formula: ', formula_str)
+            self.eq_queue.append(formula_str)
+            print('svg: ', self.formula_svg)
+            self.input_box.clear()
+
+        self.render.setHtml(self.page_template.format(formula=formula_str),
+                            QUrl('file://'))
 
     def _on_load_finished(self):
         # Extract the SVG output from the page and add an XML header
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        self.render.page().runJavaScript("""
+        self.render.runJavaScript("""
             var mjelement = document.getElementById('mathjax-container');
             mjelement.getElementsByTagName('svg')[0].outerHTML;
         """, lambda result: self.update_svg(xml_header + result.encode()))
@@ -215,6 +219,9 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         formula = self.eq_queue.pop(0)
         self.eq_box.append_formula_svg(formula, svg)
 
+    @pyqtSlot()
+    def on_add_formula_button_clicked(self):
+        self.add_current_formula()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
