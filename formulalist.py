@@ -164,7 +164,7 @@ class FormulaList(QListWidget):
 
         qApp.clipboard().setText(formula)
 
-        print('copyEquation called ', self.formula)
+        print('copyEquation called ', formula)
 
     def deleteEquation(self, index):
         # self.formulas.pop(index)
