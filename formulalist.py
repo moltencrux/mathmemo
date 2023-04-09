@@ -6,6 +6,7 @@ from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 
 
+
 class FormulaList(QListWidget):
     SvgRole = Qt.UserRole
     FormulaRole = Qt.UserRole + 1
@@ -44,6 +45,7 @@ class FormulaList(QListWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.listContextMenuReuquested)
         self.itemSelectionChanged.connect(self.itemChanged)
+        self.copyDefault = self.copyEquation
 
     def itemChanged(self):
 
@@ -166,6 +168,19 @@ class FormulaList(QListWidget):
 
         print('copyEquation called ', formula)
 
+    def copy(self):
+        index = self.selectedIndexes()[0]
+        row = index.row()
+        self.copyDefault(row)
+
+    def setCopyDefault(self, mode):
+
+        copyMethod = {'svg': self.copyDefault,
+                      'formula': self.copyEquation,
+                      'image': self.copyImage}.get(mode, lambda index: None)
+
+        self.copyDefault = copyMethod
+
     def deleteEquation(self, index):
         # self.formulas.pop(index)
         # self.images.pop(index)
@@ -220,3 +235,19 @@ class FormulaList(QListWidget):
     def append_label(self, label):
         object = QLabel("TextLabel: " + label)
         self.layout().addWidget(object)
+
+    def _on_load_finished(self):
+        # Extract the SVG output from the page and add an XML header
+        xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
+        self.render.runJavaScript("""
+            var mjelement = document.getElementById('mathjax-container');
+            mjelement.getElementsByTagName('svg')[0].outerHTML;
+        """, lambda result: self.update_svg(xml_header + result.encode()))
+        print('olf svg: ', self.formula_svg)
+
+    def save_as_text(self, filename):
+        with open(filename, 'wt') as f:
+            for item in [self.item(i) for i in range(self.count())]:
+                formula = item.data(self.FormulaRole)
+                f.write('$$' + formula + '$$\n')
+

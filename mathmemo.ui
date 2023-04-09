@@ -13,6 +13,11 @@
   <property name="windowTitle">
    <string>MathMemo</string>
   </property>
+  <property name="windowIcon">
+   <iconset>
+    <normalon>:/usr/share/icons/breeze-dark/actions/symbolic/tools-symbolic.svg</normalon>
+   </iconset>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout">
     <property name="leftMargin">
@@ -38,7 +43,7 @@
       <property name="orientation">
        <enum>Qt::Vertical</enum>
       </property>
-      <widget class="FormulaList" name="eq_box">
+      <widget class="FormulaList" name="eq_list">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
          <horstretch>0</horstretch>
@@ -65,19 +70,6 @@
          <number>0</number>
         </property>
         <item>
-         <widget class="QPlainTextEdit" name="input_box">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="placeholderText">
-           <string>Enter a formula here...</string>
-          </property>
-         </widget>
-        </item>
-        <item>
          <widget class="QFrame" name="input_button_frame">
           <property name="frameShape">
            <enum>QFrame::StyledPanel</enum>
@@ -103,6 +95,12 @@
            </property>
            <item>
             <widget class="QToolButton" name="prefs_menu_button">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="text">
               <string>...</string>
              </property>
@@ -114,14 +112,16 @@
             </widget>
            </item>
            <item>
-            <widget class="QToolButton" name="toolButton">
-             <property name="text">
-              <string>...</string>
+            <widget class="QToolButton" name="copy_profile_button">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
              </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QToolButton" name="copy_button">
+             <property name="toolTip">
+              <string>Select copy profile</string>
+             </property>
              <property name="text">
               <string>...</string>
              </property>
@@ -130,10 +130,37 @@
                <normalon>:/usr/share/icons/Adwaita/scalable/actions/insert-image-symbolic.svg</normalon>
               </iconset>
              </property>
+             <property name="popupMode">
+              <enum>QToolButton::InstantPopup</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QToolButton" name="copy_button">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="text">
+              <string>...</string>
+             </property>
+             <property name="icon">
+              <iconset>
+               <normalon>:/usr/share/icons/breeze-dark/actions/symbolic/edit-copy-symbolic.svg</normalon>
+              </iconset>
+             </property>
             </widget>
            </item>
            <item>
             <widget class="QToolButton" name="add_formula_button">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="text">
               <string>...</string>
              </property>
@@ -145,6 +172,19 @@
             </widget>
            </item>
           </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPlainTextEdit" name="input_box">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="placeholderText">
+           <string>Enter a formula here...</string>
+          </property>
          </widget>
         </item>
        </layout>

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+from functools import partial
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
 from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
@@ -133,6 +134,8 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.formula_svg = None
         self.eq_queue = []
         self.svg_queue = []
+        self.copy_mode = 'image'
+        self.default_filename = None
 
     def initUI(self):
         self.setupUi(self)
@@ -165,6 +168,35 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.settings_ui.setupUi(self.settings_dialog)
         self.actionSettings.triggered.connect(self.settings_dialog.show)
 
+        # Tool Buttons
+
+
+        self.copy_menu = QMenu()
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        for label, method in [('Formula', 'formula'), ('SVG', 'svg'), ('Image', 'image')]:
+            action = self.copy_menu.addAction(label)
+            action.setCheckable(True)
+            group.addAction(action)
+            action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
+
+        # self.action1 = self.copy_menu.addAction('Formula')
+        # self.action1.setCheckable(True)
+        # group.addAction(self.action1)
+        # self.action1.triggered.connect(lambda : self.eq_list.setCopyDefault('formula'))
+        # self.action2 = self.copy_menu.addAction('SVG')
+        # self.action2.setCheckable(True)
+        # group.addAction(self.action2)
+        # self.action2.triggered.connect(lambda : self.eq_list.setCopyDefault('svg'))
+        # self.action3 = self.copy_menu.addAction('Image')
+        # self.action3.setCheckable(True)
+        # group.addAction(self.action3)
+        # self.action3.triggered.connect(lambda : self.eq_list.setCopyDefault('image'))
+
+        self.copy_profile_button.setMenu(self.copy_menu)
+        #self.copy_profile_button.clicked.connect(self.copy_menu.show)
+        #self.copy_profile_button.
+
     def append_content(self, content):
         # Append the formula to the list box
         content_html= f"{content}<br>"
@@ -173,7 +205,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
             content_html = content_html.replace('\\(', '<mathjax style="font-size:2.3em" >').replace('\\)', '</mathjax>')
         # js_code = f"document.body.innerHTML += '{content_html}'; MathJax.typeset();"
         # self.text_area.page().runJavaScript(js_code)
-        self.eq_box.append_formula(content)
+        self.eq_list.append_formula(content)
 
     def updatePreview(self):
         formula_str = self.input_box.toPlainText()
@@ -201,9 +233,8 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
             self.eq_queue.append(formula_str)
             print('svg: ', self.formula_svg)
             self.input_box.clear()
-
-        self.render.setHtml(self.page_template.format(formula=formula_str),
-                            QUrl('file://'))
+            self.render.setHtml(self.page_template.format(formula=formula_str),
+                                QUrl('file://'))
 
     def _on_load_finished(self):
         # Extract the SVG output from the page and add an XML header
@@ -217,11 +248,38 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def update_svg(self, svg:bytes):
         # add XML header
         formula = self.eq_queue.pop(0)
-        self.eq_box.append_formula_svg(formula, svg)
+        self.eq_list.append_formula_svg(formula, svg)
 
     @pyqtSlot()
     def on_add_formula_button_clicked(self):
         self.add_current_formula()
+
+    @pyqtSlot()
+    def on_copy_button_clicked(self):
+        self.eq_list.copy()
+
+    @pyqtSlot()
+    def on_actionAbout_MathMemo_triggered(self):
+        # Set up the about window
+        about_text = (
+            '<html>'
+            'A pasteboard for math equations powerd by MathJax.'
+            '<div><a href="https://github.com/moltencrux/mathmemo">Visit MathMemo on GitHub</a></div>'
+            'Copyright © 2023 A. Graham Cole'
+        )
+        QMessageBox.about(self, 'About MathMemo', about_text)
+
+    @pyqtSlot()
+    def on_actionSave_As_triggered(self):
+        filename, filter = QFileDialog.getSaveFileName(self, self.tr('Save F:xile'), '', '')
+        self.default_filename = filename
+        if filename:
+            self.eq_list.save_as_text(filename)
+
+    @pyqtSlot()
+    def on_actionSave_triggered(self):
+        if self.default_filename:
+            self.eq_list.save_as_text(self.default_filename)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
