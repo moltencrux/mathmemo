@@ -1,24 +1,28 @@
-#!/usr/bin/env python3
-
-import sys
+#!/usr/bin/env -S python3 -O
+import logging, sys
 from functools import partial
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
 from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineSettings
 from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
-from io import BytesIO
-from texsyntax import LatexHighlighter
-import matplotlib.pyplot as plt
 
 from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, QScrollArea,QApplication,
                              QHBoxLayout, QVBoxLayout, QMainWindow, QSizePolicy, QAbstractItemView)
 
-from PyQt5 import QtWidgets, uic
+from texsyntax import LatexHighlighter
+import matplotlib.pyplot as plt
 
-from formulalist import FormulaList
+from PyQt5 import uic
+
 from mainwindow_ui import Ui_MainWindow
 from settings_ui import Ui_settings
+
+if __debug__:
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    logging.debug('debug mode on')
+else:
+    logging.basicConfig(stream=sys.stderr, level=logging.ERROR)
 
 from pysvg.parser import parse
 
@@ -36,8 +40,6 @@ void setHeight (QPlainTextEdit *ptxt, int nRows)
     ptxt->setFixedHeight (nHeight);
 }
 '''
-
-mathjax_code = r'\frac{{d}}{{dx}} (x^2) = 2x'
 
 context = r'''\newcommand{\Ex}{\mathop{\rm Ex}}
                \newcommand{\T}{\mathop{\rm T}}
@@ -105,8 +107,8 @@ page_template = """
   </head>
   <body>
     <div style="background-color: white">
-      <mathjax id="mathjax-context" style="font-size:2.3em">$${context}$$</mathjax>
-      <mathjax id="mathjax-container" style="font-size:2.3em">$${{formula}}$$</mathjax>
+      <mathjax id="mathjax-context" style="font-size:2.3em">\[{context}\]</mathjax>
+      <mathjax id="mathjax-container" style="font-size:2.3em">\[{{formula}}\]</mathjax>
     </div>
   </body>
 </html>
@@ -114,17 +116,6 @@ page_template = """
 
 plt.rc('mathtext', fontset='cm')
 
-def render_latex_as_svg(latex_formula):
-    fig, ax = plt.subplots()
-    ax.text(0.5, 0.5, fr'${latex_formula}$', size=30, ha='center', va='center')
-    # ax.text(0.5, 0.5, fr'[{latex_formula}]', size=30, ha='center', va='center')
-    ax.set_axis_off()
-    buffer = BytesIO()
-    plt.savefig(buffer, format='svg')
-    svg_image = buffer.getvalue()
-    buffer.close()
-    plt.close(fig)
-    return svg_image
 
 class MainEqWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -156,7 +147,6 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         # sets proportions for the eq list, preview & input widgets
         self.splitter.setSizes([500, 350, 150])
         # self.preview.page().loadFinished.connect(self._on_load_finished)
-        print('connecting')
         # self.render.loadFinished.connect(self._on_load_finished)
         self.render.loadFinished.connect(self._on_load_finished)
 
@@ -225,7 +215,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
         return super().eventFilter(obj, event)
 
-    def add_current_formula(self):
+    def add_current_formula_old(self):
         formula_str = self.input_box.toPlainText()
 
         if formula_str:
@@ -236,6 +226,15 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
             self.render.setHtml(self.page_template.format(formula=formula_str),
                                 QUrl('file://'))
 
+    def add_current_formula(self):
+        formula_str = self.input_box.toPlainText()
+
+        if formula_str:
+            print('appending formula: ', formula_str)
+            self.eq_list.append_formula(formula_str)
+            print('svg: ', self.formula_svg)
+            self.input_box.clear()
+
     def _on_load_finished(self):
         # Extract the SVG output from the page and add an XML header
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
@@ -243,7 +242,6 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
             var mjelement = document.getElementById('mathjax-container');
             mjelement.getElementsByTagName('svg')[0].outerHTML;
         """, lambda result: self.update_svg(xml_header + result.encode()))
-        print('olf svg: ', self.formula_svg)
 
     def update_svg(self, svg:bytes):
         # add XML header
@@ -272,14 +270,47 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     @pyqtSlot()
     def on_actionSave_As_triggered(self):
         filename, filter = QFileDialog.getSaveFileName(self, self.tr('Save F:xile'), '', '')
-        self.default_filename = filename
         if filename:
+            self.default_filename = filename
             self.eq_list.save_as_text(filename)
 
     @pyqtSlot()
     def on_actionSave_triggered(self):
         if self.default_filename:
             self.eq_list.save_as_text(self.default_filename)
+        else:
+            self.on_actionSave_As_triggered()
+
+    @pyqtSlot()
+    def on_actionOpen_triggered(self):
+        filename, filter = QFileDialog.getOpenFileName(self, self.tr('Open F:xile'), '', '')
+        if filename:
+            self.default_filename = filename
+            self.eq_list.load_from_text(filename)
+
+    @pyqtSlot()
+    def on_actionQuit_triggered(self):
+        if self.eq_list.isWindowModified() or True:
+            quit_dialog = QMessageBox()
+            quit_dialog.setText("You have unsaved formulas.")
+            quit_dialog.setInformativeText(
+                "Do you want to save before closing? If you don't save, your changes will be lost.")
+
+            quit_dialog.setStandardButtons(
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+            quit_dialog.setDefaultButton(QMessageBox.StandardButton.Save)
+            response = quit_dialog.exec_()
+
+            if response == QMessageBox.StandardButton.Save:
+                self.on_actionSave_triggered()
+                app.quit()
+            elif response == QMessageBox.StandardButton.Discard:
+                app.quit()
+
+
+            #QMessageBox.question(self, 'MathMemo - Quit?', 'You have unsaved changes, are you sure you want to quit?',
+                             #QMessageBox.StandardButton.Discard|QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+        ...
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

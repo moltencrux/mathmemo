@@ -1,11 +1,24 @@
-#import sys
-
+import logging, sys
 from PyQt5.QtWidgets import qApp, QListWidget, QLabel, QSizePolicy, QAbstractItemView, QListWidgetItem, QMenu
-from PyQt5.QtCore import Qt, QSize, QMimeData
+from PyQt5.QtCore import Qt, QSize, QMimeData, QUrl, QMutex, QMutexLocker, pyqtSignal
 from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
+from PyQt5.QtWebEngineWidgets import QWebEnginePage
+from mjrender import page_template
+from io import BytesIO
 
 
+def render_latex_as_svg(latex_formula):
+    fig, ax = plt.subplots()
+    ax.text(0.5, 0.5, fr'${latex_formula}$', size=30, ha='center', va='center')
+    # ax.text(0.5, 0.5, fr'[{latex_formula}]', size=30, ha='center', va='center')
+    ax.set_axis_off()
+    buffer = BytesIO()
+    plt.savefig(buffer, format='svg')
+    svg_image = buffer.getvalue()
+    buffer.close()
+    plt.close(fig)
+    return svg_image
 
 class FormulaList(QListWidget):
     SvgRole = Qt.UserRole
@@ -13,21 +26,18 @@ class FormulaList(QListWidget):
 
     def __init__(self, parent=None, formulas=[]):
         super().__init__(parent)
-
+        self.formula_queue = []
+        self.formula_queue_mutex= QMutex()
         self.clipboard = qApp.clipboard()
 
-        # self.setSizeAdjustPolicy(QListWidget.SizeAdjustPolicy.AdjustToContents)
-        self.currentItemChanged.connect(lambda: print("QLW: Item Changed Signal"))
         self.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.setUniformItemSizes(False)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        # self.setStyleSheet("QListWidget:item { selection-background-color: red; }")
-        # self.setStyleSheet("QListWidget::item:selected { background-color: red; }")
         self.setSpacing(1)
 
         self.setViewMode(QListWidget.ListMode)
-        # self.formulas = []
-        # self.images = []
+        self.formula_page = QWebEnginePage()
+        self.formula_page.loadFinished.connect(self._on_load_finished)
 
         for formula in formulas:
             self.append_formula(formula)
@@ -76,8 +86,8 @@ class FormulaList(QListWidget):
         # c = pal.color(QPalette.Highlight)
         # print('color: ', c)
         # print('color: ', QPalette.Highlight)
-        print('type h: ', type(QPalette.Highlight))
-        print('type w: ', type(QPalette.WindowText))
+        logging.debug('type h: {}'.format(type(QPalette.Highlight)))
+        logging.debug('type w: {}'.format(type(QPalette.WindowText)))
         #print('type: ', type(QPalette.Highlight))
         # QPalette.Highlight
         # QPalette.HighlightedText
@@ -232,22 +242,59 @@ class FormulaList(QListWidget):
         self.scrollToBottom()
 
 
-    def append_label(self, label):
-        object = QLabel("TextLabel: " + label)
-        self.layout().addWidget(object)
-
     def _on_load_finished(self):
         # Extract the SVG output from the page and add an XML header
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        self.render.runJavaScript("""
+        self.formula_page.runJavaScript("""
             var mjelement = document.getElementById('mathjax-container');
             mjelement.getElementsByTagName('svg')[0].outerHTML;
         """, lambda result: self.update_svg(xml_header + result.encode()))
-        print('olf svg: ', self.formula_svg)
+        # print('olf svg: ', self.formula_svg)
+
+    def update_svg(self, svg:bytes):
+        with QMutexLocker(self.formula_queue_mutex):
+            formula = self.formula_queue.pop(0)
+            self.append_formula_svg(formula, svg)
+            if len(self.formula_queue) > 0:
+                formula = self.formula_queue[0]
+                self.formula_page.setHtml(page_template.format(formula=formula), QUrl('file://'))
 
     def save_as_text(self, filename):
         with open(filename, 'wt') as f:
             for item in [self.item(i) for i in range(self.count())]:
                 formula = item.data(self.FormulaRole)
-                f.write('$$' + formula + '$$\n')
+                f.write('\[' + formula + '\]\n')
+
+    def load_from_text(self, filename):
+        print('opening: ', filename)
+        with open(filename, 'rt') as f:
+            formula_list = f.read().split('\]\n\[')
+            print('equations: ', len(formula_list))
+            if len(formula_list) > 0:
+                formula_list[0] = formula_list[0].removeprefix('\[')
+                formula_list[-1] = formula_list[-1].removesuffix('\]\n')
+        for formula in formula_list:
+            # FIXME should we clear this first? or do we append to what is currently loaded?
+            self.append_formula(formula)
+            print('calling append: ', formula)
+
+    def append_formula(self, formula:str):
+        if formula:
+            print('appending formula: acquiring mutex', formula)
+            with QMutexLocker(self.formula_queue_mutex):
+                # a mutex might be overkill here, since we don't have any explicit threads
+                # so really we should never hang up here waiting for it.
+                print('locked formula_queue_mutex')
+                self.formula_queue.append(formula)
+                if len(self.formula_queue) == 1:
+                    # page loadFinished processing is not guaranteed to complete before a new page
+                    # is called, so we only call setHtml here to kick off the processing if it
+                    # if the formula at this scope is the only one waiting in the queue.  Otherwise
+                    # update_svg will kick off the next one after the previous one is finished
+                    # processing .
+                    self.formula_page.setHtml(page_template.format(formula=formula), QUrl('file://'))
+                else:
+                    print('formula_queue processing elsewhere, moving on')
+
+
 
