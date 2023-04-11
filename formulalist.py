@@ -106,19 +106,22 @@ class FormulaList(QListWidget):
         self.cmenu = QMenu(self)
         menu = self.cmenu
         copy_svg_act = menu.addAction('Copy SVG')
+        copy_svg_text_act = menu.addAction('Copy SVG Text')
         copy_img_act = menu.addAction('Copy Image')
         copy_eq_act = menu.addAction('Copy Equation')
         menu.addSeparator()
         delete_act = menu.addAction('Delete')
 
         if row < 0:
-            for action in [copy_svg_act, copy_img_act, copy_eq_act, delete_act]:
+            for action in [copy_svg_act, copy_svg_text_act, copy_img_act, copy_eq_act, delete_act]:
                 action.setDisabled(True)
 
 
         action = menu.exec_(self.mapToGlobal(pos))
         if action == copy_svg_act:
             self.copySvg(row)
+        elif action == copy_svg_text_act:
+            self.copySvgText(row)
         elif action == copy_img_act:
             self.copyImage(row)
         elif action == copy_eq_act:
@@ -163,11 +166,13 @@ class FormulaList(QListWidget):
 
         item = self.item(index)
         svg = item.data(self.SvgRole)
-        renderer = QSvgRenderer()
-        renderer.load(svg.replace(b'currentColor', b'white'))
 
-        # Render the SVG into a QImage
-        image = QImage(renderer.defaultSize() * 0.2, QImage.Format_RGB666)
+        renderer = QSvgRenderer()
+        renderer.load(svg.replace(b'currentColor', b'black'))
+
+        image = QImage(renderer.defaultSize(), QImage.Format_ARGB32)
+        #image.fill(0x00000000)  # fill the image with transparent pixels
+        image.fill(Qt.white)
         painter = QPainter(image)
         renderer.render(painter)
         painter.end()
