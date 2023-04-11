@@ -4,7 +4,8 @@ from PyQt5.QtCore import Qt, QSize, QMimeData, QUrl, QMutex, QMutexLocker, pyqtS
 from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
-from mjrender import page_template
+from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
+                      mathjax_config, page_template)
 from io import BytesIO
 
 

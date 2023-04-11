@@ -74,6 +74,9 @@ from pysvg.parser import parse
 
 # from PyQt5 import Qt
 # 'PyQt5.QtWebEngineWidgets.QWebEngineSettings.ShowScrollBars'
+#from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
+#                      mathjax_config, page_template)
+from mjrender import page_template
 '''
 void setHeight (QPlainTextEdit *ptxt, int nRows)
 {
@@ -86,79 +89,6 @@ void setHeight (QPlainTextEdit *ptxt, int nRows)
     ptxt->setFixedHeight (nHeight);
 }
 '''
-
-context = r'''\newcommand{\Ex}{\mathop{\rm Ex}}
-               \newcommand{\T}{\mathop{\rm T}}
-               \newcommand{\range}{\mathop{\rm range}}
-           '''.replace('{', '{{').replace('}', '}}')
-
-
-mathjax_v2_url = "file:///usr/share/javascript/mathjax/MathJax.js?delayStartupUntil=onload"
-# mathjax_url = "file:///usr/share/anki/web/mathjax/MathJax.js"
-
-mathjax_url_remote = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js?delayStartupUntil=onload"
-
-mathjax_url = 'file:///usr/share/javascript/mathjax@3/es5/tex-svg-full.js'
-
-# Then, write a multi-line string containing HTML code. The code should import the MathJax javascript module. Then,
-# write your mathematical equation...
-
-
-mathjax_config_old = """
-      MathJax.Hub.Config({
-        showMathMenu: false,
-        jax: ['input/TeX', 'output/SVG'],
-        extensions: ['tex2jax.js', 'MathMenu.js', 'MathZoom.js'],
-        TeX: {
-          extensions: ['AMSmath.js', 'AMSsymbols.js', 'noErrors.js', 'noUndefined.js']
-        }
-      });
-""".replace('{', '{{').replace('}', '}}')
-
-mathjax_v2_config = """
-      MathJax.Hub.Config({
-        jax: ["input/TeX","input/MathML","input/AsciiMath","output/SVG"],
-        extensions: ["tex2jax.js","mml2jax.js","asciimath2jax.js","MathMenu.js",
-                     "MathZoom.js","AssistiveMML.js", "a11y/accessibility-menu.js"],
-        TeX: { extensions:
-          ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"]
-      });
-""".replace('{', '{{').replace('}', '}}')
-
-mathjax_config = """
-window.MathJax = {
-    options: {
-        enableMenu: false, ignoreHtmlClass:
-            'tex2jax_ignore', processHtmlClass:
-            'tex2jax_process' },
-    tex: { packages: ['base', 'ams', 'noerrors', 'noundefined', '+', 'color']
-           color: { padding: 5px
-                    borderWidth: 5px
-           }
-    },
-    loader: { load: ['input/tex-base', 'output/svg', 'ui/menu',
-                      '[tex]/require'] },
-};
-""".replace('{', '{{').replace('}', '}}')
-
-page_template = """
-<html>
-  <head>
-    <script type="text/javascript" id="MathJax-script"
-      src="{url}">
-    </script>
-    <script type="text/x-mathjax-config">
-        {config}
-    </script>
-  </head>
-  <body>
-    <div style="background-color: white">
-      <mathjax id="mathjax-context" style="font-size:2.3em">\[{context}\]</mathjax>
-      <mathjax id="mathjax-container" style="font-size:2.3em">\[{{formula}}\]</mathjax>
-    </div>
-  </body>
-</html>
-""".format(url=mathjax_url, context=context, config=mathjax_config)
 
 plt.rc('mathtext', fontset='cm')
 
@@ -206,7 +136,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
         # Tool Buttons
 
-
+        # Copy Profile Menu
         self.copy_menu = QMenu()
         group = QActionGroup(self)
         group.setExclusive(True)
@@ -216,32 +146,8 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
             group.addAction(action)
             action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
 
-        # self.action1 = self.copy_menu.addAction('Formula')
-        # self.action1.setCheckable(True)
-        # group.addAction(self.action1)
-        # self.action1.triggered.connect(lambda : self.eq_list.setCopyDefault('formula'))
-        # self.action2 = self.copy_menu.addAction('SVG')
-        # self.action2.setCheckable(True)
-        # group.addAction(self.action2)
-        # self.action2.triggered.connect(lambda : self.eq_list.setCopyDefault('svg'))
-        # self.action3 = self.copy_menu.addAction('Image')
-        # self.action3.setCheckable(True)
-        # group.addAction(self.action3)
-        # self.action3.triggered.connect(lambda : self.eq_list.setCopyDefault('image'))
 
         self.copy_profile_button.setMenu(self.copy_menu)
-        #self.copy_profile_button.clicked.connect(self.copy_menu.show)
-        #self.copy_profile_button.
-
-    def append_content(self, content):
-        # Append the formula to the list box
-        content_html= f"{content}<br>"
-        if '\\(' in content and '\\)' in content:
-            # Use MathJax to render math expressions enclosed in \( and \)
-            content_html = content_html.replace('\\(', '<mathjax style="font-size:2.3em" >').replace('\\)', '</mathjax>')
-        # js_code = f"document.body.innerHTML += '{content_html}'; MathJax.typeset();"
-        # self.text_area.page().runJavaScript(js_code)
-        self.eq_list.append_formula(content)
 
     def updatePreview(self):
         formula_str = self.input_box.toPlainText()
@@ -353,10 +259,6 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
             elif response == QMessageBox.StandardButton.Discard:
                 app.quit()
 
-
-            #QMessageBox.question(self, 'MathMemo - Quit?', 'You have unsaved changes, are you sure you want to quit?',
-                             #QMessageBox.StandardButton.Discard|QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
-        ...
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

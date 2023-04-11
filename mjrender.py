@@ -33,6 +33,17 @@ mathjax_url_remote = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js?dela
 
 mathjax_url = 'file:///usr/share/javascript/mathjax@3/es5/tex-svg-full.js'
 
+mathjax_config_old = """
+      MathJax.Hub.Config({
+        showMathMenu: false,
+        jax: ['input/TeX', 'output/SVG'],
+        extensions: ['tex2jax.js', 'MathMenu.js', 'MathZoom.js'],
+        TeX: {
+          extensions: ['AMSmath.js', 'AMSsymbols.js', 'noErrors.js', 'noUndefined.js']
+        }
+      });
+""".replace('{', '{{').replace('}', '}}')
+
 mathjax_config_v2_old = """
       MathJax.Hub.Config({
         showMathMenu: false,
