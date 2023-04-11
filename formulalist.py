@@ -150,6 +150,12 @@ class FormulaList(QListWidget):
         if self.clipboard.mimeData().hasImage():
             print('has image')
 
+    def copySvgText(self, index):
+
+        item = self.item(index)
+        svg = item.data(self.SvgRole)
+        qApp.clipboard().setText(svg.decode())
+
 
     def copyImage(self, index):
         # FIX: Try scaling down the image size to see if Anki likes that
@@ -187,6 +193,7 @@ class FormulaList(QListWidget):
     def setCopyDefault(self, mode):
 
         copyMethod = {'svg': self.copyDefault,
+                      'svgtext': self.copySvgText,
                       'formula': self.copyEquation,
                       'image': self.copyImage}.get(mode, lambda index: None)
 

@@ -148,7 +148,8 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.copy_menu = QMenu()
         group = QActionGroup(self)
         group.setExclusive(True)
-        for label, method in [('Formula', 'formula'), ('SVG', 'svg'), ('Image', 'image')]:
+        for label, method in [('Formula', 'formula'), ('SVG', 'svg'), ('SVG Text', 'svgtext'),
+                              ('Image', 'image')]:
             action = self.copy_menu.addAction(label)
             action.setCheckable(True)
             group.addAction(action)
