@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import importlib.resources
 
 
+# Only log debug level messages in debug mode
 if __debug__:
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     logging.debug('debug mode on')
@@ -39,41 +40,48 @@ for path in [mathmemo_ui_path, settings_ui_path]:
         source_ctime = max(os.path.getctime(path), source_ctime)
     except (FileNotFoundError, PermissionError):
         source_ctime = 0
+        ui_sources_available = False
         break
+    else:
+        ui_sources_available = True
 
 mathmemo_ui_py_path = pathhelper('mathmemo_rc.py')
 settings_ui_py_path = pathhelper('settings_ui.py')
 mainwindow_ui_py_path = pathhelper('mainwindow_ui.py')
+
 
 for path in [mainwindow_ui_py_path, settings_ui_py_path, mainwindow_ui_py_path]:
     generated_ctime = sys.maxsize
     try:
         generated_ctime = min(os.path.getctime(path), generated_ctime)
     except (FileNotFoundError, PermissionError):
-        source_ctime = sys.maxsize
+        source_ctime = 0
+        ui_generated_available = False
         break
+    else:
+        ui_generated_available = True
 
 # if ANY .ui file is newer than any generated .py file, prefer compiling the UI.
 # I.E. ONLY use generated files if they are newer
-if source_ctime > generated_ctime or True:
+if ui_sources_available and (source_ctime > generated_ctime or not ui_generated_available):
     logging.debug('importing ui files')
     from PyQt5 import uic
     ###Ui_MainWindow, _ = uic.loadUiType('ui/mathmemo.ui', from_imports=True, import_from='ui')
     ###Ui_settings, _ = uic.loadUiType('ui/settings.ui', from_imports=True, import_from='ui')
     Ui_MainWindow, _ = uic.loadUiType(mathmemo_ui_path, from_imports=True, import_from='ui')
     Ui_settings, _ = uic.loadUiType(settings_ui_path, from_imports=True, import_from='ui')
-else:
+elif ui_generated_available:
     logging.debug('importing generated files')
     from ui.mainwindow_ui import Ui_MainWindow
     from ui.settings_ui import Ui_settings
+else:
+    logging.critical('UI imports unavailable, exiting...')
+    sys.exit(-1)
 
 
-# Only log debug level messages in debug mode
 
 from pysvg.parser import parse
 
-# from PyQt5 import Qt
-# 'PyQt5.QtWebEngineWidgets.QWebEngineSettings.ShowScrollBars'
 #from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
 #                      mathjax_config, page_template)
 from mjrender import page_template
