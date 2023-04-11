@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -O
-import logging, sys
+import logging, sys, os
 from functools import partial
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
@@ -12,17 +12,63 @@ from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, Q
 
 from texsyntax import LatexHighlighter
 import matplotlib.pyplot as plt
+import importlib.resources
 
-from PyQt5 import uic
-
-from mainwindow_ui import Ui_MainWindow
-from settings_ui import Ui_settings
 
 if __debug__:
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     logging.debug('debug mode on')
 else:
     logging.basicConfig(stream=sys.stderr, level=logging.ERROR)
+
+def pathhelper(resource, package='ui'):
+    co = importlib.resources.as_file(importlib.resources.files(package).joinpath(resource))
+    with co as posix_path:
+        path = posix_path
+    return path
+
+
+# check age of files..
+# as_file(files(package).joinpath(resource))
+mathmemo_ui_path = pathhelper('mathmemo.ui')
+settings_ui_path = pathhelper('settings.ui')
+
+for path in [mathmemo_ui_path, settings_ui_path]:
+    source_ctime = 0
+    try:
+        source_ctime = max(os.path.getctime(path), source_ctime)
+    except (FileNotFoundError, PermissionError):
+        source_ctime = 0
+        break
+
+mathmemo_ui_py_path = pathhelper('mathmemo_rc.py')
+settings_ui_py_path = pathhelper('settings_ui.py')
+mainwindow_ui_py_path = pathhelper('mainwindow_ui.py')
+
+for path in [mainwindow_ui_py_path, settings_ui_py_path, mainwindow_ui_py_path]:
+    generated_ctime = sys.maxsize
+    try:
+        generated_ctime = min(os.path.getctime(path), generated_ctime)
+    except (FileNotFoundError, PermissionError):
+        source_ctime = sys.maxsize
+        break
+
+# if ANY .ui file is newer than any generated .py file, prefer compiling the UI.
+# I.E. ONLY use generated files if they are newer
+if source_ctime > generated_ctime or True:
+    logging.debug('importing ui files')
+    from PyQt5 import uic
+    ###Ui_MainWindow, _ = uic.loadUiType('ui/mathmemo.ui', from_imports=True, import_from='ui')
+    ###Ui_settings, _ = uic.loadUiType('ui/settings.ui', from_imports=True, import_from='ui')
+    Ui_MainWindow, _ = uic.loadUiType(mathmemo_ui_path, from_imports=True, import_from='ui')
+    Ui_settings, _ = uic.loadUiType(settings_ui_path, from_imports=True, import_from='ui')
+else:
+    logging.debug('importing generated files')
+    from ui.mainwindow_ui import Ui_MainWindow
+    from ui.settings_ui import Ui_settings
+
+
+# Only log debug level messages in debug mode
 
 from pysvg.parser import parse
 

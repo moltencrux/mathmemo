@@ -15,7 +15,7 @@
   </property>
   <property name="windowIcon">
    <iconset>
-    <normalon>:/usr/share/icons/breeze-dark/actions/symbolic/tools-symbolic.svg</normalon>
+    <normalon>:/icons/tools-symbolic.svg</normalon>
    </iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
@@ -105,9 +105,8 @@
               <string>...</string>
              </property>
              <property name="icon">
-              <iconset>
-               <normalon>:/usr/share/icons/breeze-dark/actions/symbolic/open-menu-symbolic.svg</normalon>
-              </iconset>
+              <iconset resource="mathmemo.qrc">
+               <normaloff>:/icons/open-menu-symbolic.svg</normaloff>:/icons/open-menu-symbolic.svg</iconset>
              </property>
             </widget>
            </item>
@@ -126,9 +125,8 @@
               <string>...</string>
              </property>
              <property name="icon">
-              <iconset>
-               <normalon>:/usr/share/icons/Adwaita/scalable/actions/insert-image-symbolic.svg</normalon>
-              </iconset>
+              <iconset resource="mathmemo.qrc">
+               <normaloff>:/icons/insert-image-symbolic.svg</normaloff>:/icons/insert-image-symbolic.svg</iconset>
              </property>
              <property name="popupMode">
               <enum>QToolButton::InstantPopup</enum>
@@ -147,9 +145,8 @@
               <string>...</string>
              </property>
              <property name="icon">
-              <iconset>
-               <normalon>:/usr/share/icons/breeze-dark/actions/symbolic/edit-copy-symbolic.svg</normalon>
-              </iconset>
+              <iconset resource="mathmemo.qrc">
+               <normaloff>:/icons/edit-copy-symbolic.svg</normaloff>:/icons/edit-copy-symbolic.svg</iconset>
              </property>
             </widget>
            </item>
@@ -165,9 +162,8 @@
               <string>...</string>
              </property>
              <property name="icon">
-              <iconset>
-               <normalon>:/usr/share/icons/breeze-dark/actions/symbolic/list-add-symbolic.svg</normalon>
-              </iconset>
+              <iconset resource="mathmemo.qrc">
+               <normaloff>:/icons/list-add-symbolic.svg</normaloff>:/icons/list-add-symbolic.svg</iconset>
              </property>
             </widget>
            </item>
@@ -231,7 +227,7 @@
   <action name="menuCopyProfile">
    <property name="icon">
     <iconset>
-     <normalon>:/usr/share/icons/Adwaita/scalable/actions/insert-image-symbolic.svg</normalon>
+     <normalon>:/icons/insert-image-symbolic.svg</normalon>
     </iconset>
    </property>
    <property name="text">
@@ -296,7 +292,8 @@
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="icons/mathmemo.qrc"/>
+  <include location="../mathmemo.qrc"/>
+  <include location="mathmemo.qrc"/>
  </resources>
  <connections/>
 </ui>

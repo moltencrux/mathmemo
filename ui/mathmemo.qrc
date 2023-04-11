@@ -1,0 +1,9 @@
+<RCC>
+  <qresource>
+    <file>icons/list-add-symbolic.svg</file>
+    <file>icons/edit-copy-symbolic.svg</file>
+    <file>icons/insert-image-symbolic.svg</file>
+    <file>icons/open-menu-symbolic.svg</file>
+    <file>icons/tools-symbolic.svg</file>
+  </qresource>
+</RCC>
