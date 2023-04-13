@@ -1,7 +1,7 @@
 import logging, sys
 from PyQt5.QtWidgets import qApp, QListWidget, QLabel, QSizePolicy, QAbstractItemView, QListWidgetItem, QMenu
-from PyQt5.QtCore import Qt, QSize, QMimeData, QUrl, QMutex, QMutexLocker, pyqtSignal
-from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter
+from PyQt5.QtCore import pyqtSignal, Qt, QMimeData, QMutex, QMutexLocker, QSettings, QSize, QUrl
+from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
@@ -24,6 +24,7 @@ def render_latex_as_svg(latex_formula):
 class FormulaList(QListWidget):
     SvgRole = Qt.UserRole
     FormulaRole = Qt.UserRole + 1
+    settings = QSettings()
 
     def __init__(self, parent=None, formulas=[]):
         super().__init__(parent)
@@ -57,6 +58,11 @@ class FormulaList(QListWidget):
         self.customContextMenuRequested.connect(self.listContextMenuReuquested)
         self.itemSelectionChanged.connect(self.itemChanged)
         self.copyDefault = self.copyEquation
+
+    @classmethod
+    def setSettings(cls, settings:QSettings):
+        # maybe totally unecessary
+        cls.settings = settings
 
     def itemChanged(self):
 
@@ -164,21 +170,35 @@ class FormulaList(QListWidget):
         # FIX: Try scaling down the image size to see if Anki likes that
         # more.  Mozilla seems to be fine with it tho
 
+        rfactor = self.settings.value("copyImage/reductionFactor", 16.0)
+
         item = self.item(index)
         svg = item.data(self.SvgRole)
 
         renderer = QSvgRenderer()
         renderer.load(svg.replace(b'currentColor', b'black'))
-
-        image = QImage(renderer.defaultSize(), QImage.Format_ARGB32)
+        #image = QImage(renderer.defaultSize(), QImage.Format_ARGB32)
+        image = QImage(renderer.defaultSize() / rfactor, QImage.Format_RGB666)
         #image.fill(0x00000000)  # fill the image with transparent pixels
         image.fill(Qt.white)
         painter = QPainter(image)
+        #painter.begin(image)
         renderer.render(painter)
         painter.end()
+        self.clipboard.setImage(image)
+
+        '''
+
+        pixmap = QPixmap(renderer.defaultSize())
+        pixmap.fill(Qt.white)
+        painter = QPainter(pixmap)
+        painter.begin(pixmap)
+        renderer.render(painter)
+        painter.end()
+        '''
 
         # Copy image to clipboard
-        self.clipboard.setImage(image)
+        #self.clipboard.setPixmap(pixmap)
         print('copyImage called ', index)
 
     def copyEquation(self, index):

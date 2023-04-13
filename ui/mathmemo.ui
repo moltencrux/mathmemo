@@ -292,7 +292,7 @@
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="../mathmemo.qrc"/>
+  <include location="mathmemo.qrc"/>
   <include location="mathmemo.qrc"/>
  </resources>
  <connections/>

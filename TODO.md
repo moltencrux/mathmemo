@@ -1,7 +1,12 @@
 # MathMemo
 Project Description
 
-###  To Fix
+### Feature Wishlist
+- [ ] Settings for image dimensions
+- [ ] Default rendering colors
+- [ ] Save settings
+ 
+### To Fix
  
 - [ ] Edit preivous "committed" messsages
 
@@ -47,6 +52,7 @@ Project Description
   - do we add the tentative closing } directly after? the cursor?
   - does it trail the cursor as we move?
   - should we maybe add	a red mark in the eq to show the location of the cursor? of what would be typed if we type something like maybe a red | or box?
+  - if we add a mark, maybe only add it when there are open {} type things, otherwise what the user commit will be different than what gets displays
 
 - what if you could highlight a potential block to surround with {}?
   - and when you highlight in the editor, it would show highlights in the formula as well.

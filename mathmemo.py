@@ -1,14 +1,16 @@
 #!/usr/bin/env -S python3 -O
 import logging, sys, os
 from functools import partial
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
+from PyQt5.QtCore import (pyqtSlot, QEvent, QSize, QItemSelection, QItemSelectionModel,
+                          QMimeData, QSettings, Qt, QUrl)
 from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineSettings
+from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
 from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
 
-from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, QScrollArea,QApplication,
-                             QHBoxLayout, QVBoxLayout, QMainWindow, QSizePolicy, QAbstractItemView)
+from PyQt5.QtWidgets import (QActionGroup, QApplication, QDialog, QDialogButtonBox, QFileDialog,
+                             QHBoxLayout, QMainWindow, QMenu, QMessageBox, QScrollArea, QSizePolicy,
+                             QVBoxLayout, QWidget)
+
 
 from texsyntax import LatexHighlighter
 import matplotlib.pyplot as plt
@@ -78,7 +80,9 @@ else:
     logging.critical('UI imports unavailable, exiting...')
     sys.exit(-1)
 
-
+#xxx
+from ui.mainwindow_ui import Ui_MainWindow
+from ui.settings_ui import Ui_settings
 
 from pysvg.parser import parse
 
@@ -104,6 +108,8 @@ plt.rc('mathtext', fontset='cm')
 class MainEqWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
+        self.settings = QSettings('moltencrux', 'MathMemo')
+        # FormulaList.setSettings(self.settings) I don't think this is necessary
         self.initUI()
         self.page_template = page_template
         self.formula_svg = None
@@ -137,10 +143,8 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.input_box.textChanged.connect(self.updatePreview)
 
         # settings UI
-        self.settings_ui = Ui_settings()
-        self.settings_dialog = QDialog()
-        self.settings_ui.setupUi(self.settings_dialog)
-        self.actionSettings.triggered.connect(self.settings_dialog.show)
+        self.settings_ui = MainSettings()
+        self.actionSettings.triggered.connect(self.settings_ui.show)
 
         # Tool Buttons
 
@@ -157,6 +161,15 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
 
         self.copy_profile_button.setMenu(self.copy_menu)
+
+    def show_settings_ui(self):
+        response = self.settings_ui.exec_()
+
+        print("response: ", response)
+        if response == QDialogButtonBox.Apply or response == QDialogButtonBox.Ok:
+            self.settings_ui.saveSettings()
+        if response == QDialogButtonBox.Cancel or response == QDialogButtonBox.Ok:
+            self.close()
 
     def updatePreview(self):
         formula_str = self.input_box.toPlainText()
@@ -267,6 +280,46 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
                 app.quit()
             elif response == QMessageBox.StandardButton.Discard:
                 app.quit()
+'''
+        # settings UI
+        self.settings_ui = Ui_settings()
+        self.settings_dialog = QDialog()
+        self.settings_ui.setupUi(self.settings_dialog)
+'''
+class MainSettings(QDialog, Ui_settings):
+    def __init__(self):
+        self._settings_changed = False
+        super().__init__()
+        self.settings = QSettings()
+        #self.settings = QSettings('moltencrux', 'MathMemo')
+
+        self.initUI()
+        self.setupUi(self)
+        self.loadSettings()
+    def initUI(self):
+        ...
+    def _settingsChanged(self):
+        self._settings_changed = True
+    @pyqtSlot()
+    def on_rfactor_doubleSpinBox_valueChanged(self):
+        self._settingsChanged(self)
+
+    @pyqtSlot()
+    def on_buttonBox_accepted(self):
+        self.saveSettings()
+
+    def on_buttonBox_rejected(self):
+        self.loadSettings()
+
+    def saveSettings(self):
+        self.settings.setValue("copyImage/reductionFactor", self.rfactor_doubleSpinBox.value())
+        print('saving: ', self.rfactor_doubleSpinBox.value())
+        #self.settings.sync()
+
+    def loadSettings(self):
+        self.rfactor_doubleSpinBox.setValue(
+            self.settings.value("copyImage/reductionFactor", 16.0, type=float))
+        print('loading: ', self.settings.value("copyImage/reductionFactor", 16.0, type=float))
 
 
 if __name__ == '__main__':
