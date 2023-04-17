@@ -62,6 +62,7 @@ Project Description
 - \left. and \right.  seem to show nothing.. could be useful for syntax completion
 - maybe show the phantom things as greyed out or some other color to note that they don't exist yet.
 - and a red or gray cursor to show where the cursor is in the image equation.  \color{red}xxx seems useful, or {\color{red} |} is better
+- https://stackoverflow.com/questions/69082144/how-to-automate-the-left-and-right-pairing-in-latex-equation-using-python
 
 - These postsmight be helpful for animated SVG in mathjax
   - https://stackoverflow.com/questions/68469519/animating-mathjax-through-svg-animations

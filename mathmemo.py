@@ -153,14 +153,16 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         group = QActionGroup(self)
         group.setExclusive(True)
         for label, method in [('Formula', 'formula'), ('SVG', 'svg'), ('SVG Text', 'svgtext'),
-                              ('Image', 'image')]:
+                              ('Image', 'image'), ('Image temp file', 'imagetmp')]:
             action = self.copy_menu.addAction(label)
             action.setCheckable(True)
             group.addAction(action)
             action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
 
 
-        self.copy_profile_button.setMenu(self.copy_menu)
+        #self.copy_profile_button.setMenu(self.copy_menu)
+        #XXX experimental
+        self.copy_profile_button.setMenu(self.eq_list.build_copy_menu())
 
     def show_settings_ui(self):
         response = self.settings_ui.exec_()

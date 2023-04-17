@@ -1,12 +1,27 @@
-import logging, sys
-from PyQt5.QtWidgets import qApp, QListWidget, QLabel, QSizePolicy, QAbstractItemView, QListWidgetItem, QMenu
-from PyQt5.QtCore import pyqtSignal, Qt, QMimeData, QMutex, QMutexLocker, QSettings, QSize, QUrl
+import logging, sys, os
+from enum import Enum, StrEnum
+from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QListWidget, QLabel, QSizePolicy,
+                             QAbstractItemView, QListWidgetItem, QMenu)
+from PyQt5.QtCore import (pyqtSignal, QDir, Qt, QMimeData, QMutex, QMutexLocker, QSettings, QSize,
+                          QTemporaryFile, QUrl)
 from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
                       mathjax_config, page_template)
+
+from menubuilder import build_menu
+
 from io import BytesIO
+
+class CopyProfile(StrEnum):
+    SVG = 'SVG'
+    SVG_TEXT = 'SVG Text'
+    IMG = 'Image'
+    IMG_TMP = 'Temporary Image File'
+    EQ = 'Latex Equation'
+
+
 
 
 def render_latex_as_svg(latex_formula):
@@ -26,9 +41,12 @@ class FormulaList(QListWidget):
     FormulaRole = Qt.UserRole + 1
     settings = QSettings()
 
+
     def __init__(self, parent=None, formulas=[]):
         super().__init__(parent)
+        self.tempfiles = []
         self.formula_queue = []
+        self.init_action_dicts()
         self.formula_queue_mutex= QMutex()
         self.clipboard = qApp.clipboard()
 
@@ -105,6 +123,12 @@ class FormulaList(QListWidget):
 
     def listContextMenuReuquested(self, pos):
         print('context menu requested')
+        pos = self.mapFromGlobal(QCursor.pos())
+        row = self.indexAt(pos).row()
+        self.cmenu =  build_menu(self.copystruct)
+
+    def listContextMenuReuquested_old(self, pos):
+        print('context menu requested')
 
         pos = self.mapFromGlobal(QCursor.pos())
         row = self.indexAt(pos).row()
@@ -114,12 +138,14 @@ class FormulaList(QListWidget):
         copy_svg_act = menu.addAction('Copy SVG')
         copy_svg_text_act = menu.addAction('Copy SVG Text')
         copy_img_act = menu.addAction('Copy Image')
+        copy_img_tmp_act = menu.addAction('Copy Image from temporary file')
         copy_eq_act = menu.addAction('Copy Equation')
         menu.addSeparator()
         delete_act = menu.addAction('Delete')
 
         if row < 0:
-            for action in [copy_svg_act, copy_svg_text_act, copy_img_act, copy_eq_act, delete_act]:
+            for action in [copy_svg_act, copy_svg_text_act, copy_img_act, copy_img_tmp_act,
+                           copy_eq_act, delete_act]:
                 action.setDisabled(True)
 
 
@@ -130,6 +156,8 @@ class FormulaList(QListWidget):
             self.copySvgText(row)
         elif action == copy_img_act:
             self.copyImage(row)
+        elif action == copy_img_tmp_act:
+            self.copyImageTmp(row)
         elif action == copy_eq_act:
             self.copyEquation(row)
         elif action == delete_act:
@@ -167,39 +195,47 @@ class FormulaList(QListWidget):
 
 
     def copyImage(self, index):
-        # FIX: Try scaling down the image size to see if Anki likes that
-        # more.  Mozilla seems to be fine with it tho
 
-        rfactor = self.settings.value("copyImage/reductionFactor", 16.0)
+        image = self.genPngByIndex(index)
+        self.clipboard.setImage(image)
+        logging.debug(f'copyImage called {index}')
+
+    def genPngByIndex(self, index):
+
+        rfactor = self.settings.value("copyImage/reductionFactor", 12.0)
+        # eventually i want to make this a more intutive setting, something related to
+        # dpi  # i think a ratio of 12 may be very close to 600dpi
+        # so then a ratio of 6 would be 1200 dpi, 24 would be 300, 48: 150
 
         item = self.item(index)
         svg = item.data(self.SvgRole)
 
         renderer = QSvgRenderer()
         renderer.load(svg.replace(b'currentColor', b'black'))
-        #image = QImage(renderer.defaultSize(), QImage.Format_ARGB32)
-        image = QImage(renderer.defaultSize() / rfactor, QImage.Format_RGB666)
+        image = QImage(renderer.defaultSize() / rfactor, QImage.Format_ARGB32)
+        #image = QImage(renderer.defaultSize() / rfactor, QImage.Format_RGB666)
         #image.fill(0x00000000)  # fill the image with transparent pixels
         image.fill(Qt.white)
         painter = QPainter(image)
-        #painter.begin(image)
         renderer.render(painter)
         painter.end()
-        self.clipboard.setImage(image)
+        return image
 
-        '''
+    def copyImageTmp(self, index):
+        image = self.genPngByIndex(index)
 
-        pixmap = QPixmap(renderer.defaultSize())
-        pixmap.fill(Qt.white)
-        painter = QPainter(pixmap)
-        painter.begin(pixmap)
-        renderer.render(painter)
-        painter.end()
-        '''
+        tmp_imgfile = QTemporaryFile(os.path.join(QDir.tempPath(), 'XXXXXXXX.png'))
+        self.tempfiles.append(tmp_imgfile)
+        image.save(tmp_imgfile)
+        filename = tmp_imgfile.fileName()
+        logging.debug('tmp filename: {}'.format(filename))
+        tmp_imgfile.close()
+        logging.debug('closed')
+        data = QMimeData()
+        url = QUrl.fromLocalFile(filename)
+        data.setUrls([url])
+        qApp.clipboard().setMimeData(data)
 
-        # Copy image to clipboard
-        #self.clipboard.setPixmap(pixmap)
-        print('copyImage called ', index)
 
     def copyEquation(self, index):
 
@@ -208,7 +244,7 @@ class FormulaList(QListWidget):
 
         qApp.clipboard().setText(formula)
 
-        print('copyEquation called ', formula)
+        logging.debug(f'copyEquation called {formula}')
 
     def copy(self):
         index = self.selectedIndexes()[0]
@@ -220,7 +256,8 @@ class FormulaList(QListWidget):
         copyMethod = {'svg': self.copyDefault,
                       'svgtext': self.copySvgText,
                       'formula': self.copyEquation,
-                      'image': self.copyImage}.get(mode, lambda index: None)
+                      'image': self.copyImage,
+                      'imagetmp': self.copyImageTmp}.get(mode, lambda index: None)
 
         self.copyDefault = copyMethod
 
@@ -328,6 +365,66 @@ class FormulaList(QListWidget):
                     self.formula_page.setHtml(page_template.format(formula=formula), QUrl('file://'))
                 else:
                     print('formula_queue processing elsewhere, moving on')
+    # need to build menu:
+    # associate actions/descriptions/methods, not necessarily using triggered.connect: dict?
+    # Qaction->function,  method->text, Qaction->text
+    # place them in a structured menu:
 
+    copy_menu_struct = (('SVG methods', (('Copy SVG', copySvg),
+                         ('SVG Text', copySvgText))),
+
+                        ('Image methods', (('Image', copyImage),
+                         ('Image from temporary file', copyImageTmp))),
+                        ('Copy Equation Text', copyEquation))
+    def init_action_dicts(self):
+        self.act_desc = {}
+        self.act_meth = {}
+        self.meth_act = {}
+
+        stack = list(self.copy_menu_struct)
+        # This while loop flattens the nested structured menu definition.  Using a stack makes
+        # recursion unnecessary here.
+        logging.debug(stack)
+        while stack:
+            logging.debug('init_action_dicts: loop')
+            tmp = stack.pop(0)
+            description, value = tmp
+
+            if isinstance(value, (list, tuple)):
+                stack.extend(value)
+            else:
+                action = QAction(description)
+                self.act_desc[action] = description
+                self.act_meth[action] = value
+                self.meth_act[value] = action
+
+    def build_copy_menu(self, group:QActionGroup=None, checkable:bool=True):
+
+        top_level = QMenu()
+        menu = top_level
+
+        stack = list(self.copy_menu_struct)
+        # This while loop flattens the nested structured menu definition.  Using a stack makes
+        # recursion unnecessary here.
+        while stack:
+            header, value = stack.pop(0)
+            if isinstance(value, (list, tuple)):
+                if isinstance(header, str):
+                    submenu = menu.addMenu(header)
+                    stack.append((submenu, None))
+                    stack.extend(value)
+
+            elif value is None:  # isinstance(menu, QMenu) is broken, should be a QMenu instance
+                menu = header
+            else:
+                print('checking header', header, 'value: ', value)
+                action = self.meth_act[value]
+                action.setCheckable(checkable)
+                if group:
+                    group.addAction(action)
+                menu.addAction(action)
+
+
+        return top_level
 
 
