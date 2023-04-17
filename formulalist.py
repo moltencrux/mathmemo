@@ -10,7 +10,7 @@ from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
                       mathjax_config, page_template)
 
-from menubuilder import build_menu
+from menubuilder import build_menu, disable_unused_submenus
 
 from io import BytesIO
 
@@ -40,6 +40,7 @@ class FormulaList(QListWidget):
     SvgRole = Qt.UserRole
     FormulaRole = Qt.UserRole + 1
     settings = QSettings()
+    copyDefault = lambda: None
 
 
     def __init__(self, parent=None, formulas=[]):
@@ -128,12 +129,25 @@ class FormulaList(QListWidget):
         menu = self.build_copy_menu(checkable=False)
         menu.addSeparator()
         delete_act = menu.addAction('Delete')
-        action = menu.exec_(self.mapToGlobal(pos))
-        if action in self.act_meth:
-            copymethod = self.act_meth[action]
+        if row < 0:
+            logging.debug("disabling copy menu items:")
+            print('act_meth: ', self.act_meth)
+            for action in self.act_meth:
+                logging.debug('disabled: {}'.format(action) )
+                action.setDisabled(True)
+            #delete_act.setDisabled(True)
+            disable_unused_submenus(menu)
+
+        selection = menu.exec_(self.mapToGlobal(pos))
+
+        if selection in self.act_meth:
+            copymethod = self.act_meth[selection]
             copymethod(self, row)
-        elif action is delete_act:
+        elif selection is delete_act:
             self.deleteEquation(row)
+        if row < 0:
+            for action in self.act_meth:
+                action.setEnabled(False)
 
         logging.debug("Context action {} performed on: {}".format(action, row))
 
@@ -380,12 +394,49 @@ class FormulaList(QListWidget):
     # Qaction->function,  method->text, Qaction->text
     # place them in a structured menu:
 
-    copy_menu_struct = (('SVG methods', (('Copy SVG', copySvg),
-                         ('SVG Text', copySvgText))),
+    copy_menu_struct = (('Default', copyDefault),
+                         ('Image via (Qt)', copyImage),
+                         ('Copy Equation Text', copyEquation),
+                         ('Image from temporary file', copyImageTmp),
+                         ('Copy SVG', copySvg),
+                         ('SVG Text', copySvgText),
+                         ('Other Formats', (('PDF', lambda: None),
+                                            ('placeholder', lambda: None))),
+                         ('More Temporary Files', (('Temp PDF File', lambda: None),
+                                                   ('Temp PNG File', lambda: None),
+                                                   ('Temp PS File', lambda: None)))
+                        )
 
-                        ('Image methods', (('Image', copyImage),
-                         ('Image from temporary file', copyImageTmp))),
-                        ('Copy Equation Text', copyEquation))
+    '''
+   Default
+Simple Image via Qt
+HTML Fragment (PNG)
+PNG
+Copy to Adobe InDesign
+Effcts>
+More HTML fragments>
+    HTML Fragment (PNG), as text
+    HTML fragment (SVG/PNG)
+    HTML fragment (SVG)
+    HTML fragment (temp. PNG file)
+Specific Formats >
+    PDF
+    PNG
+    EPS
+    LaTeX source
+    OpenOffice Draw
+    GIF via ImageMagick's convert
+    SVG via Inkscape
+    WMV via inkscape
+    EMF via inksape
+    SVG via dvisvgm
+Temporary File >
+    Temp PDF File
+    TEmp PNG File
+    TEMP PS File
+    '''
+
+
     def init_action_dicts(self):
         self.act_desc = {}
         self.act_meth = {}
@@ -427,7 +478,6 @@ class FormulaList(QListWidget):
             elif value is None:  # isinstance(menu, QMenu) is broken, should be a QMenu instance
                 menu = header
             else:
-                print('checking header', header, 'value: ', value)
                 action = self.meth_act[value]
                 action.setCheckable(checkable)
                 if group:
