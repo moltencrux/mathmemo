@@ -125,7 +125,17 @@ class FormulaList(QListWidget):
         print('context menu requested')
         pos = self.mapFromGlobal(QCursor.pos())
         row = self.indexAt(pos).row()
-        self.cmenu =  build_menu(self.copystruct)
+        menu = self.build_copy_menu(checkable=False)
+        menu.addSeparator()
+        delete_act = menu.addAction('Delete')
+        action = menu.exec_(self.mapToGlobal(pos))
+        if action in self.act_meth:
+            copymethod = self.act_meth[action]
+            copymethod(self, row)
+        elif action is delete_act:
+            self.deleteEquation(row)
+
+        logging.debug("Context action {} performed on: {}".format(action, row))
 
     def listContextMenuReuquested_old(self, pos):
         print('context menu requested')
