@@ -7,9 +7,9 @@ from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QI
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
 from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
 
-from PyQt5.QtWidgets import (QActionGroup, QApplication, QDialog, QDialogButtonBox, QFileDialog,
-                             QHBoxLayout, QMainWindow, QMenu, QMessageBox, QScrollArea, QSizePolicy,
-                             QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog, QDialogButtonBox,
+                             QFileDialog, QHBoxLayout, QMainWindow, QMenu, QMessageBox, QScrollArea,
+                             QSizePolicy, QVBoxLayout, QWidget)
 
 
 from texsyntax import LatexHighlighter
@@ -152,17 +152,20 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.copy_menu = QMenu()
         group = QActionGroup(self)
         group.setExclusive(True)
-        for label, method in [('Formula', 'formula'), ('SVG', 'svg'), ('SVG Text', 'svgtext'),
-                              ('Image', 'image'), ('Image temp file', 'imagetmp')]:
-            action = self.copy_menu.addAction(label)
-            action.setCheckable(True)
-            group.addAction(action)
-            action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
 
-
-        #self.copy_profile_button.setMenu(self.copy_menu)
         #XXX experimental
+
         self.copy_profile_button.setMenu(self.eq_list.build_copy_menu(group))
+        ###action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
+        group.triggered.connect(self.copy_profile_changed)
+
+    def copy_profile_changed(self, action:QAction):
+        logging.debug('copy profile changed {}'.format(action.text()))
+        method = action.data()
+        logging.debug('method: {}'.format(method))
+        self.eq_list.setCopyDefault(method)
+        logging.debug('method: {}'.format(self.eq_list.copyDefault))
+        logging.debug('method cls: {}'.format(self.eq_list.copyDefault.__func__))
 
     def show_settings_ui(self):
         response = self.settings_ui.exec_()

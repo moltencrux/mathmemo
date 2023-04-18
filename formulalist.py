@@ -41,8 +41,8 @@ class FormulaList(QListWidget):
     SvgRole = Qt.UserRole
     FormulaRole = Qt.UserRole + 1
     settings = QSettings()
-    copyDefault = lambda: None
     item_ops = set()
+    # This creates a class level method decorator that registers a decorated method to a set
     register = partial(lambda s, e: (s.add(e) or e), item_ops)
 
 
@@ -52,7 +52,7 @@ class FormulaList(QListWidget):
         self.tempfiles = []
         self.formula_queue = []
         self.init_action_dicts()
-        self.formula_queue_mutex= QMutex()
+        self.formula_queue_mutex = QMutex()
         self.clipboard = qApp.clipboard()
 
         self.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
@@ -80,7 +80,6 @@ class FormulaList(QListWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.listContextMenuRequested)
         self.itemSelectionChanged.connect(self.itemChanged)
-        self.copyDefault = self.copyEquation
 
     @classmethod
     def setSettings(cls, settings:QSettings):
@@ -92,39 +91,11 @@ class FormulaList(QListWidget):
         for item in [self.item(i) for i in range(self.count())]:
             svg_widget = self.itemWidget(item)
             if item.isSelected():
-                #item.setBackgroundColor(Qt.green)
-                #svg_widget.setStyleSheet("QSvgWidget { background: cyan; }")
-                #svg_widget.setAutoFillBackground(True)
-                #pal = QPalette(svg_widget.palette())
-                # svg_widget.palette().Background.setColor(QColor('cyan'))
-                #pal.setColor(QPalette.Background, QColor('cyan'))
-                # svg_widget.setPalette(pal)
-                # pal = QPalette()
-
-                #svg_widget.setBackgroundRole(QPalette.Highlight)
-                #svg_widget.setForegroundRole(QPalette.HighlightedText)
                 ...
 
             else:
-                # svg_widget.setStyleSheet("QSvgWidget { background: white; }")
-                #svg_widget.setForegroundRole(QPalette.BrightText)
-                #svg_widget.setBackgroundRole(QPalette.Base)
                 ...
 
-        # order: [group]role
-        #c = pal.color(QPalette.Window, QPalette.Highlight)
-        # c = pal.color(QPalette.Highlight)
-        # print('color: ', c)
-        # print('color: ', QPalette.Highlight)
-        logging.debug('type h: {}'.format(type(QPalette.Highlight)))
-        logging.debug('type w: {}'.format(type(QPalette.WindowText)))
-        #print('type: ', type(QPalette.Highlight))
-        # QPalette.Highlight
-        # QPalette.HighlightedText
-        #pal = QPalette(svg_widget.palette())
-        #pal.setColor(QPalette.Window, QColor('red'))
-        #svg_widget.setPalette(pal)
-        #svg_widget.setAutoFillBackground(True)
 
     def listContextMenuRequested(self, pos):
         print('context menu requested')
@@ -162,47 +133,6 @@ class FormulaList(QListWidget):
                     command(self, row)
 
         logging.debug("Context action {} performed on: {}".format(selection, row))
-
-    def listContextMenuRequested_old(self, pos):
-        print('context menu requested')
-
-        pos = self.mapFromGlobal(QCursor.pos())
-        row = self.indexAt(pos).row()
-
-        self.cmenu = QMenu(self)
-        menu = self.cmenu
-        act = menu.addSection('Copy by Method:')
-
-        copy_svg_act = menu.addAction('Copy SVG')
-        copy_svg_text_act = menu.addAction('Copy SVG Text')
-        copy_img_act = menu.addAction('Copy Image')
-        copy_img_tmp_act = menu.addAction('Copy Image from temporary file')
-        copy_eq_act = menu.addAction('Copy Equation')
-        menu.addSeparator()
-        delete_act = menu.addAction('Delete')
-
-        if row < 0:
-            for action in [copy_svg_act, copy_svg_text_act, copy_img_act, copy_img_tmp_act,
-                           copy_eq_act, delete_act]:
-                action.setDisabled(True)
-
-
-        action = menu.exec_(self.mapToGlobal(pos))
-        if action == copy_svg_act:
-            self.copySvg(row)
-        elif action == copy_svg_text_act:
-            self.copySvgText(row)
-        elif action == copy_img_act:
-            self.copyImage(row)
-        elif action == copy_img_tmp_act:
-            self.copyImageTmp(row)
-        elif action == copy_eq_act:
-            self.copyEquation(row)
-        elif action == delete_act:
-            self.deleteEquation(row)
-
-        print("Context action {} performed on: {}".format(action, row))
-
 
     @register
     def copySvg(self, index):
@@ -289,6 +219,9 @@ class FormulaList(QListWidget):
 
         logging.debug(f'copyEquation called {formula}')
 
+    # setting class default copy behavior
+    copyDefault = copyEquation
+
     def copy(self):
         try:
             row = self.selectedIndexes()[0].row()
@@ -296,17 +229,14 @@ class FormulaList(QListWidget):
             row = -1
         else:
             if row >= 0:
+                logging.debug('in copy')
                 self.copyDefault(row)
 
-    def setCopyDefault(self, mode):
 
-        copyMethod = {'svg': self.copyDefault,
-                      'svgtext': self.copySvgText,
-                      'formula': self.copyEquation,
-                      'image': self.copyImage,
-                      'imagetmp': self.copyImageTmp}.get(mode, lambda index: None)
+    @classmethod
+    def setCopyDefault(cls, method):
 
-        self.copyDefault = copyMethod
+        cls.copyDefault = method
 
     @register
     def deleteEquation(self, index):
@@ -413,11 +343,8 @@ class FormulaList(QListWidget):
                     self.formula_page.setHtml(page_template.format(formula=formula), QUrl('file://'))
                 else:
                     print('formula_queue processing elsewhere, moving on')
-    # need to build menu:
-    # associate actions/descriptions/methods, not necessarily using triggered.connect: dict?
-    # Qaction->function,  method->text, Qaction->text
-    # place them in a structured menu:
 
+    # this is the menu structure for building copy methods menus.  It gets fed into build_menu
     copy_menu_struct = (('Preferred Default', copyDefault),
                          ('Image via (Qt)', copyImage),
                          ('Equation Text', copyEquation),
