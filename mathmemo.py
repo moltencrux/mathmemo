@@ -162,7 +162,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
         #self.copy_profile_button.setMenu(self.copy_menu)
         #XXX experimental
-        self.copy_profile_button.setMenu(self.eq_list.build_copy_menu())
+        self.copy_profile_button.setMenu(self.eq_list.build_copy_menu(group))
 
     def show_settings_ui(self):
         response = self.settings_ui.exec_()

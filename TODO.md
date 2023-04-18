@@ -35,7 +35,9 @@ Project Description
 - [ ] hide preview window when empty
 
 - [ ] how do we tell if mathjax gave an error? .. one is yellow bg.
+- [ ] drag equations between tabs/windows or within list position
 - 	2 is.. $$?  maybe no svg generated?
+- [ ] fix preview web view to scroll when eq gets large]
 
 
 ### clean this up:
@@ -69,8 +71,12 @@ Project Description
   - https://stackoverflow.com/questions/29205294/how-to-achieve-blinkin
 
 
-
-
+### minor bugs
+- context menu action labels should be different
+  - so do we use QAction instances to construct the menus? (currently done in init_action_dicts)
+    - maybe setData to refer to the method & use that as an index
+    - why not 'connect?', we need to associate it somehow.  before we iterated to check
+    - 
 
 - ### Completed Column ✓
 - [x] can copy imge to clipboard and paste in an IM

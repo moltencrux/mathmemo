@@ -15,4 +15,3 @@ re.split
 # so should we not let them close an expression in error?
 # maybe have a dict keyed by the openers with the count thus far in the string.  
 
-def

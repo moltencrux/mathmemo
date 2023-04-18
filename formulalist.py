@@ -1,4 +1,5 @@
 import logging, sys, os
+from functools import partial
 from enum import Enum, StrEnum
 from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QListWidget, QLabel, QSizePolicy,
                              QAbstractItemView, QListWidgetItem, QMenu)
@@ -41,6 +42,9 @@ class FormulaList(QListWidget):
     FormulaRole = Qt.UserRole + 1
     settings = QSettings()
     copyDefault = lambda: None
+    item_ops = set()
+    register = partial(lambda s, e: (s.add(e) or e), item_ops)
+
 
 
     def __init__(self, parent=None, formulas=[]):
@@ -74,7 +78,7 @@ class FormulaList(QListWidget):
                                   )
 
         self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self.listContextMenuReuquested)
+        self.customContextMenuRequested.connect(self.listContextMenuRequested)
         self.itemSelectionChanged.connect(self.itemChanged)
         self.copyDefault = self.copyEquation
 
@@ -122,36 +126,44 @@ class FormulaList(QListWidget):
         #svg_widget.setPalette(pal)
         #svg_widget.setAutoFillBackground(True)
 
-    def listContextMenuReuquested(self, pos):
+    def listContextMenuRequested(self, pos):
         print('context menu requested')
         pos = self.mapFromGlobal(QCursor.pos())
         row = self.indexAt(pos).row()
-        menu = self.build_copy_menu(checkable=False)
+
+        if row < 0 and not self.selectedItems():
+            index_items_enabled = False
+        else:
+            index_items_enabled = True
+
+        menu = build_menu(self.copy_menu_struct, enabled=index_items_enabled)
+        first = menu.actions()
+        first = first[0] if first else None
+        menu.insertSection(first, 'Copy by Method:')
         menu.addSeparator()
         delete_act = menu.addAction('Delete')
-        if row < 0:
-            logging.debug("disabling copy menu items:")
-            print('act_meth: ', self.act_meth)
-            for action in self.act_meth:
-                logging.debug('disabled: {}'.format(action) )
-                action.setDisabled(True)
-            #delete_act.setDisabled(True)
-            disable_unused_submenus(menu)
+        delete_act.setEnabled(index_items_enabled)
+        delete_act.setData(self.deleteEquation.__func__)
 
         selection = menu.exec_(self.mapToGlobal(pos))
+        logging.debug("CM selection: {} row {}".format(selection, row))
 
-        if selection in self.act_meth:
-            copymethod = self.act_meth[selection]
-            copymethod(self, row)
-        elif selection is delete_act:
-            self.deleteEquation(row)
-        if row < 0:
-            for action in self.act_meth:
-                action.setEnabled(False)
+        if selection:
+            command = selection.data()
+            if command:
+                if row < 0:
+                    try:
+                       row = self.selectedIndexes()[0].row()
+                    except (AttributeError, IndexError):
+                       pass
 
-        logging.debug("Context action {} performed on: {}".format(action, row))
+                if row >= 0:
+                    logging.debug(f'data is {command}')
+                    command(self, row)
 
-    def listContextMenuReuquested_old(self, pos):
+        logging.debug("Context action {} performed on: {}".format(selection, row))
+
+    def listContextMenuRequested_old(self, pos):
         print('context menu requested')
 
         pos = self.mapFromGlobal(QCursor.pos())
@@ -159,6 +171,8 @@ class FormulaList(QListWidget):
 
         self.cmenu = QMenu(self)
         menu = self.cmenu
+        act = menu.addSection('Copy by Method:')
+
         copy_svg_act = menu.addAction('Copy SVG')
         copy_svg_text_act = menu.addAction('Copy SVG Text')
         copy_img_act = menu.addAction('Copy Image')
@@ -190,6 +204,7 @@ class FormulaList(QListWidget):
         print("Context action {} performed on: {}".format(action, row))
 
 
+    @register
     def copySvg(self, index):
 
         item = self.item(index)
@@ -211,6 +226,7 @@ class FormulaList(QListWidget):
         if self.clipboard.mimeData().hasImage():
             print('has image')
 
+    @register
     def copySvgText(self, index):
 
         item = self.item(index)
@@ -218,6 +234,7 @@ class FormulaList(QListWidget):
         qApp.clipboard().setText(svg.decode())
 
 
+    @register
     def copyImage(self, index):
 
         image = self.genPngByIndex(index)
@@ -245,6 +262,7 @@ class FormulaList(QListWidget):
         painter.end()
         return image
 
+    @register
     def copyImageTmp(self, index):
         image = self.genPngByIndex(index)
 
@@ -261,6 +279,7 @@ class FormulaList(QListWidget):
         qApp.clipboard().setMimeData(data)
 
 
+    @register
     def copyEquation(self, index):
 
         item = self.item(index)
@@ -271,9 +290,13 @@ class FormulaList(QListWidget):
         logging.debug(f'copyEquation called {formula}')
 
     def copy(self):
-        index = self.selectedIndexes()[0]
-        row = index.row()
-        self.copyDefault(row)
+        try:
+            row = self.selectedIndexes()[0].row()
+        except (IndexError, AttributeError):
+            row = -1
+        else:
+            if row >= 0:
+                self.copyDefault(row)
 
     def setCopyDefault(self, mode):
 
@@ -285,6 +308,7 @@ class FormulaList(QListWidget):
 
         self.copyDefault = copyMethod
 
+    @register
     def deleteEquation(self, index):
         # self.formulas.pop(index)
         # self.images.pop(index)
@@ -394,11 +418,11 @@ class FormulaList(QListWidget):
     # Qaction->function,  method->text, Qaction->text
     # place them in a structured menu:
 
-    copy_menu_struct = (('Default', copyDefault),
+    copy_menu_struct = (('Preferred Default', copyDefault),
                          ('Image via (Qt)', copyImage),
-                         ('Copy Equation Text', copyEquation),
+                         ('Equation Text', copyEquation),
                          ('Image from temporary file', copyImageTmp),
-                         ('Copy SVG', copySvg),
+                         ('SVG', copySvg),
                          ('SVG Text', copySvgText),
                          ('Other Formats', (('PDF', lambda: None),
                                             ('placeholder', lambda: None))),
@@ -460,31 +484,6 @@ Temporary File >
                 self.meth_act[value] = action
 
     def build_copy_menu(self, group:QActionGroup=None, checkable:bool=True):
-
-        top_level = QMenu()
-        menu = top_level
-
-        stack = list(self.copy_menu_struct)
-        # This while loop flattens the nested structured menu definition.  Using a stack makes
-        # recursion unnecessary here.
-        while stack:
-            header, value = stack.pop(0)
-            if isinstance(value, (list, tuple)):
-                if isinstance(header, str):
-                    submenu = menu.addMenu(header)
-                    stack.append((submenu, None))
-                    stack.extend(value)
-
-            elif value is None:  # isinstance(menu, QMenu) is broken, should be a QMenu instance
-                menu = header
-            else:
-                action = self.meth_act[value]
-                action.setCheckable(checkable)
-                if group:
-                    group.addAction(action)
-                menu.addAction(action)
-
-
-        return top_level
+        return build_menu(self.copy_menu_struct, group, checkable=checkable)
 
 
