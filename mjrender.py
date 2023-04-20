@@ -65,7 +65,7 @@ mathjax_v2_config = """
       });
 """.replace('{', '{{').replace('}', '}}')
 
-mathjax_config = """
+mathjax_config_orig_working = """
 window.MathJax = {
     options: {
         enableMenu: false, ignoreHtmlClass:
@@ -81,7 +81,23 @@ window.MathJax = {
 };
 """.replace('{', '{{').replace('}', '}}')
 
-page_template = """
+mathjax_config_orig = """
+window.MathJax = {
+    options: {
+        enableMenu: false, ignoreHtmlClass:
+            'tex2jax_ignore', processHtmlClass:
+            'tex2jax_process' },
+    tex: { packages: ['base', 'ams', 'noerrors', 'noundefined', '+', 'color']
+           color: { padding: 5px
+                    borderWidth: 5px
+           }
+    },
+    loader: { load: ['input/tex-base', 'output/svg', 'ui/menu',
+                      '[tex]/require'] },
+};
+""".replace('{', '{{').replace('}', '}}')
+
+page_template_orig = """
 <html>
   <head>
     <script type="text/javascript" id="MathJax-script"
@@ -93,12 +109,69 @@ page_template = """
   </head>
   <body>
     <div style="background-color: white">
-      <mathjax id="mathjax-context" style="font-size:2.3em">\[{context}\]</mathjax>
-      <mathjax id="mathjax-container" style="font-size:2.3em">\[{{formula}}\]</mathjax>
+      <mathjax id="mathjax-context" style="font-size:2.3em">\[{context}\]</mathjax> <mathjax id="mathjax-container" style="font-size:2.3em">\[{{formula}}\]</mathjax>
     </div>
   </body>
 </html>
-""".format(url=mathjax_url, context=context, config=mathjax_config)
+""" # .format(url=mathjax_url, context=context, config=mathjax_config)
+
+mathjax_config = """
+<script type="text/javascript">
+  window.MathJax = {
+    options: {
+        enableMenu: false, ignoreHtmlClass:
+            'tex2jax_ignore', processHtmlClass:
+            'tex2jax_process' },
+    loader: { load: ['input/tex-base', 'output/svg', 'ui/menu', '[tex]/require', '[tex]/noerrors']
+    },
+    tex: {packages: {'[+]': ['noerrors', 'ams', 'noundefined']},
+      macros: {
+        RR: "{\\\\bf R}",
+        bold: ["{\\\\bf #1}", 1]
+      }
+    },
+    
+    startup: {
+      ready: () => {
+        MathJax.startup.defaultReady();
+        MathJax.startup.promise.then(() => {
+          var math = document.getElementById("rescale");
+          var w = math.offsetWidth, W = math.parentNode.offsetWidth;
+          if (w > W) {
+            math.style.fontSize = (100*W/w)+"%";
+          MathJax.startup.document.getMathItemsWithin(math)[0].Rerender();
+        }
+        console.log('MathJax initial typesetting complete');
+        });
+      }
+    }
+  };
+</script>
+""".replace('{', '{{').replace('}', '}}')
+
+page_template = """
+<head>
+<style>.box {{{{
+  width : 100%
+  margin: 0 auto 0 auto;
+  border: 1px solid black;
+  padding: 0 0 0 0 ;
+  text-align: center;
+}}}}</style>
+</head>
+
+<body>
+{config}
+  
+<script type="text/javascript" src="{url}"></script>
+
+<mathjax id="mathjax-context" style="font-size:2.3em">\[{context}\]</mathjax>
+<div class="box"><div id="rescale" style="display:inline-block">
+<mathjax id="mathjax-container" style="font-size:2.3em">\[{{formula}}\]</mathjax>
+</div></div>
+</body>
+
+""".format(url=mathjax_url, config=mathjax_config, context=context)
 
 plt.rc('mathtext', fontset='cm')
 

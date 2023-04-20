@@ -1,13 +1,17 @@
 # MathMemo
 Project Description
 
+
 ### Feature Wishlist
-- [ ] Settings for image dimensions
+- [ ] Settings for image dimensions/resolution
 - [ ] Default rendering colors
 - [ ] Save settings
- 
+- [ ] double click to edit
+- [ ] edit already committed formulas
+- [ ] drag & drop to rearrange
+
 ### To Fix
- 
+
 - [ ] Edit preivous "committed" messsages
 
 ### Brainstorm Ideas
@@ -38,6 +42,7 @@ Project Description
 - [ ] drag equations between tabs/windows or within list position
 - 	2 is.. $$?  maybe no svg generated?
 - [ ] fix preview web view to scroll when eq gets large]
+- [ ] When detecting syntax errors, we can incrementally process from left to right, inserting phantom closing delimiters.  maybe keep a histsory for speed.  or from the error state, we can back up one token/char at a time so that we can still display the last known good state but with an error indicator like a red background.   
 
 
 ### clean this up:
@@ -79,8 +84,9 @@ Project Description
     - 
 
 - ### Completed Column ✓
-- [x] can copy imge to clipboard and paste in an IM
+- [x] can copy image to clipboard and paste in an IM
 - [x] draft mode with preview before commit
 - [x] menubar, save dialogs, preferences
 - [x] save a session
 - [x] scrolling IM style widget 
+- [x] scale down image in display as it gets larger
