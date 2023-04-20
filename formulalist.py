@@ -58,6 +58,7 @@ class FormulaList(QListWidget):
         self.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.setUniformItemSizes(False)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
         self.setSpacing(1)
 
         self.setViewMode(QListWidget.ListMode)
