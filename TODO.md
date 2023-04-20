@@ -81,7 +81,7 @@ Project Description
   - so do we use QAction instances to construct the menus? (currently done in init_action_dicts)
     - maybe setData to refer to the method & use that as an index
     - why not 'connect?', we need to associate it somehow.  before we iterated to check
-    - 
+- [ ] drag & drop reordering items makes items go blank, may need redrawing
 
 - ### Completed Column ✓
 - [x] can copy image to clipboard and paste in an IM

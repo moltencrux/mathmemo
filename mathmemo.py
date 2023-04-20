@@ -80,11 +80,6 @@ else:
     logging.critical('UI imports unavailable, exiting...')
     sys.exit(-1)
 
-#xxx
-from ui.mainwindow_ui import Ui_MainWindow
-from ui.settings_ui import Ui_settings
-
-from pysvg.parser import parse
 
 #from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
 #                      mathjax_config, page_template)
