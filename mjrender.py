@@ -114,6 +114,15 @@ page_template_orig = """
   </body>
 </html>
 """ # .format(url=mathjax_url, context=context, config=mathjax_config)
+'''
+  chtml: {
+    displayIndent: "2em"
+  },
+  options: {
+    ignoreHtmlClass: 'tex2jax_ignore',
+    processHtmlClass: 'tex2jax_process'
+  }
+'''
 
 mathjax_config = """
 <script type="text/javascript">
@@ -122,9 +131,12 @@ mathjax_config = """
         enableMenu: false, ignoreHtmlClass:
             'tex2jax_ignore', processHtmlClass:
             'tex2jax_process' },
-    loader: { load: ['input/tex-base', 'output/svg', 'ui/menu', '[tex]/require', '[tex]/noerrors']
+    chtml: {
+        displayIndent: "2em"
     },
-    tex: {packages: {'[+]': ['noerrors', 'ams', 'noundefined']},
+    loader: { load: ['input/tex-base', 'output/svg', 'ui/menu', '[tex]/require', '[tex]/noerrors', '[tex]/mathtools']
+    },
+    tex: {packages: {'[+]': ['noerrors', 'ams', 'noundefined', 'mathtools']},
       macros: {
         RR: "{\\\\bf R}",
         bold: ["{\\\\bf #1}", 1]

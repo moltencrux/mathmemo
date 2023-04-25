@@ -2,10 +2,10 @@ import logging, sys, os
 from functools import partial
 from enum import Enum, StrEnum
 from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QListWidget, QLabel, QSizePolicy,
-                             QAbstractItemView, QListWidgetItem, QMenu)
-from PyQt5.QtCore import (pyqtSignal, QDir, Qt, QMimeData, QMutex, QMutexLocker, QSettings, QSize,
+                             QAbstractItemView, QListWidgetItem, QMenu, QStyle, QStyledItemDelegate)
+from PyQt5.QtCore import (pyqtSignal, QDir, Qt, QMimeData, QMutex, QMutexLocker, QRectF, QSettings, QSize,
                           QTemporaryFile, QUrl)
-from PyQt5.QtGui import QPalette, QCursor, QImage, QPainter, QPixmap
+from PyQt5.QtGui import QPalette, QCursor, QIcon, QImage, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
@@ -14,6 +14,8 @@ from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, 
 from menubuilder import build_menu, disable_unused_submenus
 
 from io import BytesIO
+import typing
+from typing import overload
 
 class CopyProfile(StrEnum):
     SVG = 'SVG'
@@ -40,6 +42,8 @@ def render_latex_as_svg(latex_formula):
 class FormulaList(QListWidget):
     SvgRole = Qt.UserRole
     FormulaRole = Qt.UserRole + 1
+    SvgWidgetRole = Qt.UserRole + 2
+
     settings = QSettings()
     item_ops = set()
     # This creates a class level method decorator that registers a decorated method to a set
@@ -81,7 +85,9 @@ class FormulaList(QListWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.listContextMenuRequested)
         self.itemSelectionChanged.connect(self.itemChanged)
-
+        self.itemDoubleClicked.connect(self.editItem)
+        self.delegate = FormulaDelegate()
+        self.setItemDelegate(self.delegate)
     @classmethod
     def setSettings(cls, settings:QSettings):
         # maybe totally unecessary
@@ -281,10 +287,11 @@ class FormulaList(QListWidget):
 
         print('svg sizeHint: ', svg_widget.sizeHint())
 
-        print('svg_widegt size hint: ', svg_widget.sizeHint())
+        print('svg_widget size hint: ', svg_widget.sizeHint())
         # item.setContentsMargins(0, 5, 0, 5)  #no effect?
         item.setSizeHint(QSize(0, svg_widget.renderer().defaultSize().height() // 24))
 
+        item.setData(FormulaList.SvgWidgetRole, svg_widget)
         self.addItem(item)
         self.setItemWidget(item, svg_widget)
 
@@ -399,7 +406,6 @@ Temporary File >
         # recursion unnecessary here.
         logging.debug(stack)
         while stack:
-            logging.debug('init_action_dicts: loop')
             tmp = stack.pop(0)
             description, value = tmp
 
@@ -414,4 +420,147 @@ Temporary File >
     def build_copy_menu(self, group:QActionGroup=None, checkable:bool=True):
         return build_menu(self.copy_menu_struct, group, checkable=checkable)
 
+
+
+class FormulaListItem(QListWidgetItem):
+    #def __init__(self, *args, value: typing.Any=None, **kwargs):
+    '''
+    QListWidgetItem(parent: typing.Optional[QListWidget] = None, type: int = QListWidgetItem.Type)
+    QListWidgetItem(text: str, parent: typing.Optional[QListWidget] = None, type: int = QListWidgetItem.Type)
+    QListWidgetItem(icon: QIcon, text: str, parent: typing.Optional[QListWidget] = None, type: int = QListWidgetItem.Type)
+    QListWidgetItem(other: QListWidgetItem)
+    
+    '''
+    @overload
+    def __init__(self, parent: typing.Optional[QListWidget] = None,
+                 type: int = QListWidgetItem.UserType):
+        super().__init__(parent, type)
+    @overload
+    def __init__(self, text: str, parent: typing.Optional[QListWidget] = None,
+                 type: int = QListWidgetItem.UserType):
+        super().__init__(text, parent, type)
+    @overload
+    def __init__(self, icon: QIcon, text: str, parent: typing.Optional[QListWidget] = None,
+                 type: int = QListWidgetItem.Type):
+        super().__init__(icon, text, parent, type)
+
+    @overload
+    def __init__(self, other: QListWidgetItem):
+        super().__init__(other)
+        ...
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+
+
+class FormulaDelegate(QStyledItemDelegate):
+    """ A subclass of QStyledItemDelegate that allows us to render our
+        pretty star ratings.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def paint(self, painter, option, index):
+        # later we should check option.state and render differently if selected
+        if option.state & QStyle.State_Selected:
+           ... # pick different colors
+        else:
+            ...  # pick default colors
+
+        svg = index.data(FormulaList.SvgRole)
+        painter.save()
+        #item = self.item(index)
+        #svg = item.data(self.SvgRole)
+
+        QRectF(option.rect)
+        renderer = QSvgRenderer()
+        renderer.load(svg.replace(b'currentColor', b'green'))
+        renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+        renderer.render(painter, QRectF(option.rect))
+        # painter.end()
+        painter.restore()
+        """ Paint the items in the table.
+
+            If the item referred to by <index> is a StarRating, we handle the
+            painting ourselves. For the other items, we let the base class
+            handle the painting as usual.
+
+            In a polished application, we'd use a better check than the
+            column number to find out if we needed to paint the stars, but
+            it works for the purposes of this example.
+        if index.column() == 3:
+            star_rating = StarRating(index.data())
+
+            # If the row is currently selected, we need to make sure we
+            # paint the background accordingly.
+            if option.state & QStyle.State_Selected:
+                # The original C++ example used option.palette.foreground() to
+                # get the brush for painting, but there are a couple of
+                # problems with that:
+                #   - foreground() is obsolete now, use windowText() instead
+                #   - more importantly, windowText() just returns a brush
+                #     containing a flat color, where sometimes the style
+                #     would have a nice subtle gradient or something.
+                # Here we just use the brush of the painter object that's
+                # passed in to us, which keeps the row highlighting nice
+                # and consistent.
+                painter.fillRect(option.rect, painter.brush())
+
+            # Now that we've painted the background, call starRating.paint()
+            # to paint the stars.
+            star_rating.paint(painter, option.rect, option.palette)
+        else:
+            QStyledItemDelegate.paint(self, painter, option, index)
+        """
+
+    def sizeHint(self, option, index):
+        svg_widget = index.data(FormulaList.SvgWidgetRole)
+        if svg_widget:
+            hint = svg_widget.sizeHint() / 24
+        else:
+            data = index.data(FormulaList.FormulaRole)
+            logging.debug('delegate: no svg data, data={}'.format(data))
+            hint = QStyledItemDelegate.sizeHint(self, option, index)
+
+        logging.debug('delegate sizeHint: {}'.format(hint))
+        print('delegate sizeHint: {}'.format(hint))
+        return hint
+
+
+    # def createEditor(self, parent, option, index):
+    #     """ Creates and returns the custom StarEditor object we'll use to edit
+    #         the StarRating.
+    #     """
+    #     if index.column() == 3:
+    #         editor = StarEditor(parent)
+    #         editor.editing_finished.connect(self.commit_and_close_editor)
+    #         return editor
+    #     else:
+    #         return QStyledItemDelegate.createEditor(self, parent, option, index)
+
+    # def setEditorData(self, editor, index):
+    #     """ Sets the data to be displayed and edited by our custom editor. """
+    #     if index.column() == 3:
+    #         editor.star_rating = StarRating(index.data())
+    #     else:
+    #         QStyledItemDelegate.setEditorData(self, editor, index)
+
+    # def setModelData(self, editor, model, index):
+    #     """ Get the data from our custom editor and stuffs it into the model.
+    #     """
+    #     if index.column() == 3:
+    #         model.setData(index, editor.star_rating.star_count)
+    #     else:
+    #         QStyledItemDelegate.setModelData(self, editor, model, index)
+
+    # def commit_and_close_editor(self):
+    #     """ Erm... commits the data and closes the editor. :) """
+    #     editor = self.sender()
+
+    #     # The commitData signal must be emitted when we've finished editing
+    #     # and need to write our changed back to the model.
+    #     self.commitData.emit(editor)
+    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 

@@ -80,6 +80,10 @@ else:
     logging.critical('UI imports unavailable, exiting...')
     sys.exit(-1)
 
+# XXX Temporary
+from ui.mainwindow_ui import Ui_MainWindow
+from ui.settings_ui import Ui_settings
+# XXX
 
 #from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
 #                      mathjax_config, page_template)
@@ -153,6 +157,11 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.copy_profile_button.setMenu(self.eq_list.build_copy_menu(group))
         ###action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
         group.triggered.connect(self.copy_profile_changed)
+        self.eq_list.itemDoubleClicked.connect(self.editItem)
+
+    def editItem(self, item):
+        logging.debug('editItem: {}'.format(item))
+        self.save_input_state = self.input_box.toPlainText()
 
     def copy_profile_changed(self, action:QAction):
         logging.debug('copy profile changed {}'.format(action.text()))
@@ -184,23 +193,13 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         if event.type() == QEvent.KeyPress and obj is self.input_box:
             if event.key() == Qt.Key_Return and self.input_box.hasFocus():
                 if event.modifiers() & Qt.ControlModifier:
-                    self.add_current_formula()
+                    self.commit_current_formula()
                     return True # this seems to delete the trailing \n.. interesting
 
         return super().eventFilter(obj, event)
 
-    def add_current_formula_old(self):
-        formula_str = self.input_box.toPlainText()
 
-        if formula_str:
-            print('appending formula: ', formula_str)
-            self.eq_queue.append(formula_str)
-            print('svg: ', self.formula_svg)
-            self.input_box.clear()
-            self.render.setHtml(self.page_template.format(formula=formula_str),
-                                QUrl('file://'))
-
-    def add_current_formula(self):
+    def commit_current_formula(self):
         formula_str = self.input_box.toPlainText()
 
         if formula_str:
