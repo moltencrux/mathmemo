@@ -41,11 +41,11 @@ def render_latex_as_svg(latex_formula):
     plt.close(fig)
     return svg_image
 
+FormulaData = namedtuple('FormulaData', ('svg_data', 'renderer'))
+
 class FormulaList(QListWidget):
-    FormulaData = namedtuple('FormulaData', ('svg_data', 'renderer'))
+    # FormulaData = namedtuple('FormulaData', ('svg_data', 'renderer'))
     SvgRole = Qt.UserRole
-    FormulaRole = Qt.UserRole + 1
-    SvgWidgetRole = Qt.UserRole + 2
 
     settings = QSettings()
     item_ops = set()
@@ -54,7 +54,7 @@ class FormulaList(QListWidget):
 
 
 
-    def __init__(self, parent=None, formulas=[]):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.tempfiles = []
         self.formula_queue = [] # should this be a deque ?
@@ -72,8 +72,6 @@ class FormulaList(QListWidget):
         self.formula_page = QWebEnginePage()
         self.formula_page.loadFinished.connect(self._on_load_finished)
 
-        for formula in formulas:
-            self.append_formula(formula)
         self.setStyleSheet("QListWidget"
                                   "{"
                                   "background : white;"
@@ -269,14 +267,13 @@ class FormulaList(QListWidget):
     def append_formula_svg(self, formula, svg:bytes):
 
         item = QListWidgetItem()
-        # item.setData(self.FormulaRole, formula)
         item.setText(formula)
 
         renderer = QSvgRenderer()
         renderer.load(svg)
         renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
         renderer.setAspectRatioMode(Qt.KeepAspectRatio)
-        rec = self.FormulaData(svg, renderer)
+        rec = FormulaData(svg, None)
         item.setData(Qt.UserRole, rec)
 
         # self.formulas.append(formula)
@@ -305,7 +302,6 @@ class FormulaList(QListWidget):
         # item.setContentsMargins(0, 5, 0, 5)  #no effect?
         # item.setSizeHint(QSize(0, svg_widget.renderer().defaultSize().height() // 24))
 
-        # item.setData(FormulaList.SvgWidgetRole, svg_widget)
         self.addItem(item)
         # self.setItemWidget(item, svg_widget)
 
@@ -332,7 +328,6 @@ class FormulaList(QListWidget):
     def save_as_text(self, filename):
         with open(filename, 'wt') as f:
             for item in [self.item(i) for i in range(self.count())]:
-                # formula = item.data(self.FormulaRole)
                 formula = item.text()
                 f.write('\[' + formula + '\]\n')
 
@@ -472,13 +467,14 @@ class FormulaListItem(QListWidgetItem):
 class FormulaDelegate(QStyledItemDelegate):
 
     def __init__(self, parent=None):
+        self.renderer = QSvgRenderer()
         super().__init__(parent)
 
     def paint(self, painter, option, index):
 
         #svg = index.data(FormulaList.SvgRole)
         rec = index.data(Qt.UserRole)
-        renderer = rec.renderer
+        renderer = self.renderer
         svg = rec.svg_data
 
         # later we should check option.state and render differently if selected
@@ -512,15 +508,17 @@ class FormulaDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
 
         rec = index.data(Qt.UserRole)
-        renderer = rec.renderer
+        #renderer = rec.renderer
+        renderer = self.renderer
         svg = rec.svg_data
+
 
         #!renderer().viewBox().adjusted(0, -200, 0, 200))
 
-        if not rec.renderer.isValid():
-            renderer.load(svg.replace(b'currentColor', b'green'))
-            renderer.setAspectRatioMode(Qt.KeepAspectRatio)
-            renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
+        #renderer.load(svg.replace(b'currentColor', b'green'))
+        renderer.load(svg)
+        renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+        renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
 
         if renderer:
             hint = renderer.defaultSize() / 24
