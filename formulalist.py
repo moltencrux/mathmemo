@@ -148,7 +148,8 @@ class FormulaList(QListWidget):
     def copySvg(self, index):
 
         item = self.item(index)
-        svg = item.data(self.SvgRole)
+        rec = item.data(Qt.UserRole)
+        svg = rec.svg_data
 
         # create a QMimeData object and set the SVG data
         mime_data = QMimeData()
@@ -170,7 +171,8 @@ class FormulaList(QListWidget):
     def copySvgText(self, index):
 
         item = self.item(index)
-        svg = item.data(self.SvgRole)
+        rec = item.data(Qt.UserRole)
+        svg = rec.svg_data
         qApp.clipboard().setText(svg.decode())
 
 
@@ -189,7 +191,8 @@ class FormulaList(QListWidget):
         # so then a ratio of 6 would be 1200 dpi, 24 would be 300, 48: 150
 
         item = self.item(index)
-        svg = item.data(self.SvgRole)
+        rec = item.data(Qt.UserRole)
+        svg = rec.svg_data
 
         renderer = QSvgRenderer()
         renderer.load(svg.replace(b'currentColor', b'black'))
@@ -223,7 +226,7 @@ class FormulaList(QListWidget):
     def copyEquation(self, index):
 
         item = self.item(index)
-        formula = item.data(self.FormulaRole)
+        formula = item.text()
 
         qApp.clipboard().setText(formula)
 
