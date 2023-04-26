@@ -4,26 +4,28 @@ from enum import Enum, StrEnum
 from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QListWidget, QLabel, QSizePolicy,
                              QAbstractItemView, QListWidgetItem, QMenu, QStyle, QStyledItemDelegate)
 from PyQt5.QtCore import (pyqtSignal, QDir, Qt, QMimeData, QMutex, QMutexLocker, QRectF, QSettings, QSize,
-                          QTemporaryFile, QUrl)
-from PyQt5.QtGui import QPalette, QCursor, QIcon, QImage, QPainter, QPixmap
+                          QTemporaryFile, QUrl, QAbstractListModel)
+from PyQt5.QtGui import QPalette, QCursor, QIcon, QImage, QPainter, QPixmap, QColor
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
                       mathjax_config, page_template)
 
+import matplotlib.pyplot as plt
+plt.rc('mathtext', fontset='cm')
+
 from menubuilder import build_menu, disable_unused_submenus
+from collections import namedtuple
 
 from io import BytesIO
 import typing
 from typing import overload
-
 class CopyProfile(StrEnum):
     SVG = 'SVG'
     SVG_TEXT = 'SVG Text'
     IMG = 'Image'
     IMG_TMP = 'Temporary Image File'
     EQ = 'Latex Equation'
-
 
 
 
@@ -40,6 +42,7 @@ def render_latex_as_svg(latex_formula):
     return svg_image
 
 class FormulaList(QListWidget):
+    FormulaData = namedtuple('FormulaData', ('svg_data', 'renderer'))
     SvgRole = Qt.UserRole
     FormulaRole = Qt.UserRole + 1
     SvgWidgetRole = Qt.UserRole + 2
@@ -54,7 +57,7 @@ class FormulaList(QListWidget):
     def __init__(self, parent=None, formulas=[]):
         super().__init__(parent)
         self.tempfiles = []
-        self.formula_queue = []
+        self.formula_queue = [] # should this be a deque ?
         self.init_action_dicts()
         self.formula_queue_mutex = QMutex()
         self.clipboard = qApp.clipboard()
@@ -263,37 +266,45 @@ class FormulaList(QListWidget):
     def append_formula_svg(self, formula, svg:bytes):
 
         item = QListWidgetItem()
-        item.setData(self.FormulaRole, formula)
-        item.setData(self.SvgRole, svg)
+        # item.setData(self.FormulaRole, formula)
+        item.setText(formula)
+
+        renderer = QSvgRenderer()
+        renderer.load(svg)
+        renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
+        renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+        rec = self.FormulaData(svg, renderer)
+        item.setData(Qt.UserRole, rec)
 
         # self.formulas.append(formula)
         # self.images.append(svg)
-        svg_widget = QSvgWidget()
+        # svg_widget = QSvgWidget()
 
         # This can replace the color in the svg data
         # svg = svg.replace(b'currentColor', b'red')
 
-        svg_widget.load(svg)
-        svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
-        svg_widget.renderer().setViewBox(svg_widget.renderer().viewBox().adjusted(0, -200, 0, 200))
-        svg_widget.setFixedHeight( svg_widget.renderer().defaultSize().height() // 24)
+        #svg_widget.load(svg)
+        # save this for size adjustment
+        #!svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        #!svg_widget.renderer().setViewBox(svg_widget.renderer().viewBox().adjusted(0, -200, 0, 200))
+        #!svg_widget.setFixedHeight( svg_widget.renderer().defaultSize().height() // 24)
 
         # effectively adds padding around the QSvgWidget
-        print("view box: ", svg_widget.renderer().viewBox())
+        # print("view box: ", svg_widget.renderer().viewBox())
 
-        print("sfh resized: ", svg_widget.renderer().defaultSize().height())
+        # print("sfh resized: ", svg_widget.renderer().defaultSize().height())
         policy = QSizePolicy()
         policy.setVerticalPolicy(QSizePolicy.Fixed)
 
-        print('svg sizeHint: ', svg_widget.sizeHint())
+        # print('svg sizeHint: ', svg_widget.sizeHint())
 
-        print('svg_widget size hint: ', svg_widget.sizeHint())
+        # print('svg_widget size hint: ', svg_widget.sizeHint())
         # item.setContentsMargins(0, 5, 0, 5)  #no effect?
-        item.setSizeHint(QSize(0, svg_widget.renderer().defaultSize().height() // 24))
+        # item.setSizeHint(QSize(0, svg_widget.renderer().defaultSize().height() // 24))
 
-        item.setData(FormulaList.SvgWidgetRole, svg_widget)
+        # item.setData(FormulaList.SvgWidgetRole, svg_widget)
         self.addItem(item)
-        self.setItemWidget(item, svg_widget)
+        # self.setItemWidget(item, svg_widget)
 
         self.scrollToBottom()
 
@@ -318,7 +329,8 @@ class FormulaList(QListWidget):
     def save_as_text(self, filename):
         with open(filename, 'wt') as f:
             for item in [self.item(i) for i in range(self.count())]:
-                formula = item.data(self.FormulaRole)
+                # formula = item.data(self.FormulaRole)
+                formula = item.text()
                 f.write('\[' + formula + '\]\n')
 
     def load_from_text(self, filename):
@@ -455,77 +467,67 @@ class FormulaListItem(QListWidgetItem):
 
 
 class FormulaDelegate(QStyledItemDelegate):
-    """ A subclass of QStyledItemDelegate that allows us to render our
-        pretty star ratings.
-    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
     def paint(self, painter, option, index):
+
+        #svg = index.data(FormulaList.SvgRole)
+        rec = index.data(Qt.UserRole)
+        renderer = rec.renderer
+        svg = rec.svg_data
+
         # later we should check option.state and render differently if selected
         if option.state & QStyle.State_Selected:
-           ... # pick different colors
+            fill_color = option.palette.highlight().color()
+            draw_color_str = option.palette.color(QPalette.Active, QPalette.HighlightedText).name()
+            painter.setBrush(option.palette.highlightedText()) #seems to do nothing
+            painter.fillRect(QRectF(option.rect), fill_color)
+
         else:
-            ...  # pick default colors
+            fill_color = option.palette.color(QPalette.Active, QPalette.Base)
+            # draw_color_str = option.palette.text().color().name() # this color is too light
+            draw_color_str = QColor(QPalette.Text).name() # using hard coded Text color instead
+            painter.setBrush(option.palette.windowText()) # this seems to not affect SVG rendering
 
-        svg = index.data(FormulaList.SvgRole)
-        painter.save()
-        #item = self.item(index)
-        #svg = item.data(self.SvgRole)
+        logging.debug('fill_color: {}'.format(fill_color))
+        logging.debug('draw_color_str: {}'.format(draw_color_str))
 
-        QRectF(option.rect)
-        renderer = QSvgRenderer()
-        renderer.load(svg.replace(b'currentColor', b'green'))
+        # renderer.load(svg)
+        renderer.load(svg.replace(b'currentColor', draw_color_str.encode()))
         renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+        renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
+
+        painter.save()
         renderer.render(painter, QRectF(option.rect))
-        # painter.end()
         painter.restore()
-        """ Paint the items in the table.
 
-            If the item referred to by <index> is a StarRating, we handle the
-            painting ourselves. For the other items, we let the base class
-            handle the painting as usual.
-
-            In a polished application, we'd use a better check than the
-            column number to find out if we needed to paint the stars, but
-            it works for the purposes of this example.
-        if index.column() == 3:
-            star_rating = StarRating(index.data())
-
-            # If the row is currently selected, we need to make sure we
-            # paint the background accordingly.
-            if option.state & QStyle.State_Selected:
-                # The original C++ example used option.palette.foreground() to
-                # get the brush for painting, but there are a couple of
-                # problems with that:
-                #   - foreground() is obsolete now, use windowText() instead
-                #   - more importantly, windowText() just returns a brush
-                #     containing a flat color, where sometimes the style
-                #     would have a nice subtle gradient or something.
-                # Here we just use the brush of the painter object that's
-                # passed in to us, which keeps the row highlighting nice
-                # and consistent.
-                painter.fillRect(option.rect, painter.brush())
-
-            # Now that we've painted the background, call starRating.paint()
-            # to paint the stars.
-            star_rating.paint(painter, option.rect, option.palette)
-        else:
-            QStyledItemDelegate.paint(self, painter, option, index)
-        """
+        # else:
+        #     QStyledItemDelegate.paint(self, painter, option, index)
 
     def sizeHint(self, option, index):
-        svg_widget = index.data(FormulaList.SvgWidgetRole)
-        if svg_widget:
-            hint = svg_widget.sizeHint() / 24
+
+        rec = index.data(Qt.UserRole)
+        renderer = rec.renderer
+        svg = rec.svg_data
+
+        #!renderer().viewBox().adjusted(0, -200, 0, 200))
+
+        if not rec.renderer.isValid():
+            renderer.load(svg.replace(b'currentColor', b'green'))
+            renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+            renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
+
+        if renderer:
+            hint = renderer.defaultSize() / 24
         else:
-            data = index.data(FormulaList.FormulaRole)
-            logging.debug('delegate: no svg data, data={}'.format(data))
             hint = QStyledItemDelegate.sizeHint(self, option, index)
 
+        data = index.data()
+        logging.debug('delegate: formula = {}'.format(data))
         logging.debug('delegate sizeHint: {}'.format(hint))
-        print('delegate sizeHint: {}'.format(hint))
+        # look at renderer.defaultSize
         return hint
 
 

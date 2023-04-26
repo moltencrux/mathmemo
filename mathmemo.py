@@ -13,7 +13,6 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog, QDial
 
 
 from texsyntax import LatexHighlighter
-import matplotlib.pyplot as plt
 import importlib.resources
 
 
@@ -101,7 +100,6 @@ void setHeight (QPlainTextEdit *ptxt, int nRows)
 }
 '''
 
-plt.rc('mathtext', fontset='cm')
 
 
 class MainEqWindow(QMainWindow, Ui_MainWindow):
