@@ -29,11 +29,13 @@ context = r'''\newcommand{\Ex}{\mathop{\rm Ex}}
 
 
 mathjax_v2_url = "file:///usr/share/javascript/mathjax/MathJax.js?delayStartupUntil=onload"
-mathjax_url_remote = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js?delayStartupUntil=onload"
 
-mathjax_url = 'file:///usr/share/javascript/mathjax@3/es5/tex-svg-full.js'
+mathjax_v3_url_remote = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js?delayStartupUntil=onload"
 
-mathjax_config_old = """
+mathjax_v3_url = 'file:///usr/share/javascript/mathjax@3/es5/tex-svg-full.js'
+mathjax_url = mathjax_v3_url
+
+mathjax_config_old = r"""
       MathJax.Hub.Config({
         showMathMenu: false,
         jax: ['input/TeX', 'output/SVG'],
@@ -44,7 +46,7 @@ mathjax_config_old = """
       });
 """.replace('{', '{{').replace('}', '}}')
 
-mathjax_config_v2_old = """
+mathjax_config_v2_old = r"""
       MathJax.Hub.Config({
         showMathMenu: false,
         jax: ['input/TeX', 'output/SVG'],
@@ -55,7 +57,8 @@ mathjax_config_v2_old = """
       });
 """.replace('{', '{{').replace('}', '}}')
 
-mathjax_v2_config = """
+mathjax_v2_config_badq = r"""
+    <script type="text/x-mathjax-config">
       MathJax.Hub.Config({
         jax: ["input/TeX","input/MathML","input/AsciiMath","output/SVG"],
         extensions: ["tex2jax.js","mml2jax.js","asciimath2jax.js","MathMenu.js",
@@ -63,9 +66,58 @@ mathjax_v2_config = """
         TeX: { extensions:
           ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"]
       });
+    </script>
 """.replace('{', '{{').replace('}', '}}')
 
-mathjax_config_orig_working = """
+mathjax_v2_config_kinda_ok = r"""
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    extensions: ["tex2jax.js"],
+    jax: ["input/TeX", "output/HTML-CSS"],
+    tex2jax: {
+      inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+      displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+      processEscapes: true
+    },
+    "HTML-CSS": { fonts: ["TeX"] }
+  });
+</script>
+""".replace('{', '{{').replace('}', '}}')
+
+mathjax_v2_config = r"""
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    extensions: ["tex2jax.js"],
+    jax: ["input/TeX","input/MathML","input/AsciiMath","output/SVG"],
+    tex2jax: {
+      inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+      displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+      processEscapes: true
+    },
+    TeX: {
+      extensions: ['AMSmath.js', 'AMSsymbols.js', 'noErrors.js', 'noUndefined.js']
+    },
+    SVG: {
+      useFontCache: false,
+      useGlobalCache: false
+    }
+  });
+</script>
+""".replace('{', '{{').replace('}', '}}')
+
+mathjax_v2_config_test = r"""
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+    extensions: ["tex2jax.js"],
+    extensions: ["tex2jax.js","MathEvents.js","MathZoom.js","MathMenu.js","toMathML.js","TeX/noErrors.js","TeX/noUndefined.js","TeX/AMSmath.js","TeX/AMSsymbols.js","fast-preview.js","AssistiveMML.js","[a11y]/accessibility-menu.js"],
+    jax: ["input/TeX","output/SVG","output/PreviewHTML"]
+});
+
+MathJax.Ajax.loadComplete("[MathJax]/config/TeX-AMS_SVG-full.js");
+</script>
+""".replace('{', '{{').replace('}', '}}')
+
+mathjax_config_orig_working = r"""
 window.MathJax = {
     options: {
         enableMenu: false, ignoreHtmlClass:
@@ -81,7 +133,7 @@ window.MathJax = {
 };
 """.replace('{', '{{').replace('}', '}}')
 
-mathjax_config_orig = """
+mathjax_config_orig = r"""
 window.MathJax = {
     options: {
         enableMenu: false, ignoreHtmlClass:
@@ -97,7 +149,7 @@ window.MathJax = {
 };
 """.replace('{', '{{').replace('}', '}}')
 
-page_template_orig = """
+page_template_orig = r"""
 <html>
   <head>
     <script type="text/javascript" id="MathJax-script"
@@ -113,7 +165,8 @@ page_template_orig = """
     </div>
   </body>
 </html>
-""" # .format(url=mathjax_url, context=context, config=mathjax_config)
+"""
+
 '''
   chtml: {
     displayIndent: "2em"
@@ -124,7 +177,7 @@ page_template_orig = """
   }
 '''
 
-mathjax_config = """
+mathjax_v3_config = r"""
 <script type="text/javascript">
   window.MathJax = {
     options: {
@@ -161,8 +214,42 @@ mathjax_config = """
 </script>
 """.replace('{', '{{').replace('}', '}}')
 
-page_template = """
+qchannel_js = r"""
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script type="text/javascript">
+    'use strict';
+
+    var placeholder = document.getElementById('placeholder');
+
+    var updateText = function (text) {
+        placeholder.innerHTML = text;
+        console.log(text);
+    }
+
+    new QWebChannel(qt.webChannelTransport,
+        function (channel) {
+            var handler = channel.objects.handler;
+            window.handler = handler;
+            updateText(handler.text);
+            handler.textChanged.connect(updateText);
+        }
+    );
+</script>
+""".replace('{', '{{').replace('}', '}}')
+
+mj_enqueue = r"""
+    // MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+    MathJax.Hub.Queue(function() {
+        svgOutput = document.getElementById('mathjax-container').getElementsByTagName('svg')[0].outerHTML;
+        window.handler.sendSvg(svgOutput);
+        console.error('queue processed');
+    });
+"""
+
+
+page_template = r"""
 <head>
+<div id="placeholder"></div>
 <style>.box {{{{
   width : 100%
   margin: 0 auto 0 auto;
@@ -172,8 +259,11 @@ page_template = """
 }}}}</style>
 </head>
 
-<body>
-{config}
+<body>  
+
+{qchannel}
+
+{mj_config}
   
 <script type="text/javascript" src="{url}"></script>
 
@@ -182,8 +272,114 @@ page_template = """
 <mathjax id="mathjax-container" style="font-size:2.3em">\[{{formula}}\]</mathjax>
 </div></div>
 </body>
+"""
 
-""".format(url=mathjax_url, config=mathjax_config, context=context)
+    # .format(url=mathjax_url, config=mathjax_config, context=context)
+
+javascript_v3_extract = r'''
+var mjelement = document.getElementById('mathjax-container');
+mjelement.getElementsByTagName('svg')[0].outerHTML;
+'''
+javascript_v2_extract = r'''
+(function( window, document, undefined ) {
+  document.getElementsByTagName('svg')[0].outerHTML;
+}( window, window.document ));
+'''
+
+javascript_v2_extract_ = r'''
+    MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+    MathJax.Hub.Queue(function() {
+        let svgOutput = document.getElementsByTagName('svg')[0].outerHTML;
+        window.pyqt_output = VsvgOutput;
+    });
+'''
+
+big_html = r"""
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<head>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+        extensions: ["tex2jax.js"],
+        extensions: ["tex2jax.js","MathEvents.js","MathZoom.js","MathMenu.js","toMathML.js","TeX/noErrors.js","TeX/noUndefined.js","TeX/AMSmath.js","TeX/AMSsymbols.js","fast-preview.js","AssistiveMML.js","[a11y]/accessibility-menu.js"],
+        jax: ["input/TeX","output/SVG","output/PreviewHTML"],
+	SVG: {
+	    useGlobalCache: false,
+        },
+    });
+    MathJax.Ajax.loadComplete("[MathJax]/config/TeX-AMS_SVG-full.js");
+</script>
+<script type="text/javascript" src="file:///usr/share/javascript/mathjax/MathJax.js?delayStartupUntil=onload"></script>
+<script>
+    MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+</script>
+<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+<mathjax id="mathjax-container" style="font-size:2.3em">$${x}$$</mathjax>
+<script type="text/javascript">
+    'use strict';
+
+    MathJax.Hub.Queue(function() {
+        var mj_container = document.getElementById("mathjax-container");
+        if( mj_container == null) {
+          console.error('mj_container is null');
+        }
+        window.mj_container = mj_container;
+        var eq_jax = MathJax.Hub.getAllJax("mathjax-container")[0];
+        window.eq_jax = eq_jax;
+        
+        var updateText = function (text) {
+            MathJax.Hub.Queue(["Text", window.eq_jax, text, updateSvg]);
+            //window.mj_container.value = text;
+            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+            //MathJax.Hub.Queue(updateSvg);
+            //MathJax.Hub.Queue(["Text", eq_jax, text]);
+            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, mj_container]);
+            //eq_jax.Text(text, updateSvg);
+            
+            //mj_container.innerHTML = text;
+            
+            //console.error('JS: updateText: ' + text);
+            //updateSvg();
+        };
+        window.updateText = updateText
+        
+        function updateSvg () {
+            var svgOutput;
+            try {
+                svgOutput = window.mj_container.getElementsByTagName('svg')[0].outerHTML;
+            }
+            catch (err) {
+                svgOutput = null;
+            }
+            
+            //svgOutput = document.getElementsByTagName('svg')[0].outerHTML;
+            //svgOutput = document.getElementById('mathjax-container').getElementsByTagName('svg')[0].outerHTML;
+            //svgOutput = window.mj_container.innerHTML;
+            if (svgOutput != null) {
+                window.handler.sendSvg(svgOutput);
+            }
+        }
+        window.updateSvg = updateSvg
+        
+        new QWebChannel(qt.webChannelTransport, function (channel) {
+                var handler = channel.objects.handler;
+                window.handler = handler;
+                updateText(handler.text);
+                handler.textChanged.connect(updateText);
+            }
+        );
+        
+    });
+    
+    
+</script>
+</body>
+</html>
+"""
 
 plt.rc('mathtext', fontset='cm')
 

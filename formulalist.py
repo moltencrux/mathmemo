@@ -3,13 +3,16 @@ from functools import partial
 from enum import Enum, StrEnum
 from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QListWidget, QLabel, QSizePolicy,
                              QAbstractItemView, QListWidgetItem, QMenu, QStyle, QStyledItemDelegate)
-from PyQt5.QtCore import (pyqtSignal, QDir, Qt, QMimeData, QMutex, QMutexLocker, QRectF, QSettings, QSize,
-                          QTemporaryFile, QUrl, QAbstractListModel)
+from PyQt5.QtCore import (pyqtProperty, pyqtSignal, pyqtSlot, QCoreApplication, QDir, Qt, QMimeData,
+                          QMutex, QMutexLocker, QObject, QRectF, QSettings, QSize, QTemporaryFile,
+                          QUrl, QAbstractListModel, QVariant)
 from PyQt5.QtGui import QPalette, QCursor, QIcon, QImage, QPainter, QPixmap, QColor
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
-from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
-                      mathjax_config, page_template)
+from PyQt5.QtWebChannel import QWebChannel
+from mjrender import (context, mathjax_v2_url, mathjax_v3_url, mathjax_v3_url_remote, mathjax_url,
+                      mathjax_v2_config, mathjax_v3_config, page_template, javascript_v2_extract,
+                      javascript_v3_extract, qchannel_js, mj_enqueue, big_html)
 
 import matplotlib.pyplot as plt
 plt.rc('mathtext', fontset='cm')
@@ -27,7 +30,30 @@ class CopyProfile(StrEnum):
     IMG_TMP = 'Temporary Image File'
     EQ = 'Latex Equation'
 
+# settings = QSettings(QCoreApplication.organizationName(), QCoreApplication.applicationName())
+settings = QSettings()
 
+
+# .format(url=mathjax_url, config=mathjax_config, context=context)
+def gen_render_html_orig():
+    settings.sync()
+    mathjax_version = settings.value('main/mathjaxVersion', '3', type=str)
+    mathjax_default_url = ''
+    mathjax_config = ''
+    if mathjax_version == '3':
+        mathjax_default_url = mathjax_v3_url
+        mathjax_config = mathjax_v3_config
+    elif mathjax_version == '2':
+        mathjax_default_url = mathjax_v2_url
+        mathjax_config = mathjax_v2_config
+
+    mathjax_url = settings.value("main/mathjaxUrl", mathjax_default_url, type=str)
+    html = page_template.format(qchannel=qchannel_js, mj_config=mathjax_config,
+                                url=mathjax_url, context=context)
+    return html
+
+def gen_render_html():
+    return big_html
 
 def render_latex_as_svg(latex_formula):
     fig, ax = plt.subplots()
@@ -43,16 +69,46 @@ def render_latex_as_svg(latex_formula):
 
 FormulaData = namedtuple('FormulaData', ('svg_data', 'renderer'))
 
-class FormulaList(QListWidget):
-    # FormulaData = namedtuple('FormulaData', ('svg_data', 'renderer'))
-    SvgRole = Qt.UserRole
 
-    settings = QSettings()
+class CallHandler(QObject):
+    textChanged = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self._text = ""
+
+    def text(self):
+        return self._text
+
+    def setText(self, text):
+        self._text = text
+        self.textChanged.emit(text)
+        print("emit textChanged")
+
+    text = pyqtProperty(str, fget=text, fset=setText, notify=textChanged)
+
+    @pyqtSlot(result=QVariant)
+    def test(self):
+        print('XOXOXOXOXXXXOOXOOX: call received')
+        return QVariant({"abc": "def", "ab": 22})
+
+    @pyqtSlot(str)
+    def sendSvg(self, svg_data):
+        print('python output: ', svg_data)
+
+
+    # take an argument from javascript - JS:  handler.test1('hello!')
+    @pyqtSlot(QVariant, result=QVariant)
+    def test1(self, args):
+        print('i got')
+        print(args)
+        return "ok"
+
+
+class FormulaList(QListWidget):
     item_ops = set()
     # This creates a class level method decorator that registers a decorated method to a set
     register = partial(lambda s, e: (s.add(e) or e), item_ops)
-
-
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -70,7 +126,10 @@ class FormulaList(QListWidget):
 
         self.setViewMode(QListWidget.ListMode)
         self.formula_page = QWebEnginePage()
-        self.formula_page.loadFinished.connect(self._on_load_finished)
+        # self.formula_page.loadFinished.connect(self._on_load_finished)
+
+        html = gen_render_html()
+        self.formula_page.setHtml(html, QUrl('file://'))
 
         self.setStyleSheet("QListWidget"
                                   "{"
@@ -89,6 +148,12 @@ class FormulaList(QListWidget):
         self.itemDoubleClicked.connect(self.editItem)
         self.delegate = FormulaDelegate()
         self.setItemDelegate(self.delegate)
+
+        self.channel = QWebChannel()
+        self.handler = CallHandler()
+        self.channel.registerObject('handler', self.handler)
+        self.formula_page.setWebChannel(self.channel)
+
     @classmethod
     def setSettings(cls, settings:QSettings):
         # maybe totally unecessary
@@ -183,7 +248,7 @@ class FormulaList(QListWidget):
 
     def genPngByIndex(self, index):
 
-        rfactor = self.settings.value("copyImage/reductionFactor", 12.0)
+        rfactor = settings.value("copyImage/reductionFactor", 12.0, type=float)
         # eventually i want to make this a more intutive setting, something related to
         # dpi  # i think a ratio of 12 may be very close to 600dpi
         # so then a ratio of 6 would be 1200 dpi, 24 would be 300, 48: 150
@@ -311,10 +376,26 @@ class FormulaList(QListWidget):
     def _on_load_finished(self):
         # Extract the SVG output from the page and add an XML header
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        self.formula_page.runJavaScript("""
-            var mjelement = document.getElementById('mathjax-container');
-            mjelement.getElementsByTagName('svg')[0].outerHTML;
-        """, lambda result: self.update_svg(xml_header + result.encode()))
+        mathjax_ver = settings.value("main/mathjaxVersion", '3', type=str)
+
+        if mathjax_ver == '2':
+            # self.formula_page.runJavaScript(javascript_v3_extract,
+            #                                 lambda result: self.update_svg(
+            #                                     xml_header + result.encode()))
+            #self.formula_page.runJavaScript("""
+            #document.getElementsByTagName('mathjax')[0].outerHTML;""",
+            #partial(print, 'Load finished XXXXX'))
+            self.formula_page.runJavaScript(mj_enqueue,
+                                            partial(print, 'Load finished ZZZZ'))
+        elif mathjax_ver == '3':
+            self.formula_page.runJavaScript(javascript_v3_extract,
+                                            lambda result: self.update_svg(
+                                                xml_header + result.encode()))
+        else:
+            self.formula_page.runJavaScript("""
+                var mjelement = document.getElementById('mathjax-container');
+                mjelement.getElementsByTagName('svg')[0].outerHTML;
+            """, lambda result: self.update_svg(xml_header + result.encode()))
         # print('olf svg: ', self.formula_svg)
 
     def update_svg(self, svg:bytes):
@@ -323,7 +404,10 @@ class FormulaList(QListWidget):
             self.append_formula_svg(formula, svg)
             if len(self.formula_queue) > 0:
                 formula = self.formula_queue[0]
-                self.formula_page.setHtml(page_template.format(formula=formula), QUrl('file://'))
+                html = gen_render_html()
+                # self.formula_page.setHtml(html.format(formula=formula), QUrl('file://'))
+                with open('mmout.html', 'wt') as f:
+                    f.write(html.format(formula=formula))
 
     def save_as_text(self, filename):
         with open(filename, 'wt') as f:
@@ -358,7 +442,10 @@ class FormulaList(QListWidget):
                     # if the formula at this scope is the only one waiting in the queue.  Otherwise
                     # update_svg will kick off the next one after the previous one is finished
                     # processing .
-                    self.formula_page.setHtml(page_template.format(formula=formula), QUrl('file://'))
+                    html = gen_render_html()
+                    # self.formula_page.setHtml(html.format(formula=formula), QUrl('file://'))
+                    with open('mmout.html', 'wt') as f:
+                        f.write(html)
                 else:
                     print('formula_queue processing elsewhere, moving on')
 
@@ -472,34 +559,35 @@ class FormulaDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
 
-        #svg = index.data(FormulaList.SvgRole)
         rec = index.data(Qt.UserRole)
-        renderer = self.renderer
+        # renderer = self.renderer
         svg = rec.svg_data
 
         # later we should check option.state and render differently if selected
         if option.state & QStyle.State_Selected:
-            fill_color = option.palette.highlight().color()
-            draw_color_str = option.palette.color(QPalette.Active, QPalette.HighlightedText).name()
+            bg_color = option.palette.highlight().color()
+            draw_color = option.palette.color(QPalette.Active, QPalette.HighlightedText)
             painter.setBrush(option.palette.highlightedText()) #seems to do nothing
-            painter.fillRect(QRectF(option.rect), fill_color)
+            painter.fillRect(QRectF(option.rect), bg_color)
 
         else:
-            fill_color = option.palette.color(QPalette.Active, QPalette.Base)
-            # draw_color_str = option.palette.text().color().name() # this color is too light
-            draw_color_str = QColor(QPalette.Text).name() # using hard coded Text color instead
+            bg_color = option.palette.color(QPalette.Active, QPalette.Base)
+            # draw_color = option.palette.text().color() # this color is too light
+            draw_color = QColor(QPalette.Text) # using hard coded Text color instead
             painter.setBrush(option.palette.windowText()) # this seems to not affect SVG rendering
 
-        logging.debug('fill_color: {}'.format(fill_color))
-        logging.debug('draw_color_str: {}'.format(draw_color_str))
+        logging.debug('bg_color.name(): {}'.format(bg_color.name()))
+        logging.debug('draw_color.name(): {}'.format(draw_color.name()))
+
+        vpad = settings.value("display/verticalPadding", 200, type=int)
 
         # renderer.load(svg)
-        renderer.load(svg.replace(b'currentColor', draw_color_str.encode()))
-        renderer.setAspectRatioMode(Qt.KeepAspectRatio)
-        renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
+        self.renderer.load(svg.replace(b'currentColor', draw_color.name().encode()))
+        self.renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+        self.renderer.setViewBox(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad))
 
         painter.save()
-        renderer.render(painter, QRectF(option.rect))
+        self.renderer.render(painter, QRectF(option.rect))
         painter.restore()
 
         # else:
@@ -508,24 +596,24 @@ class FormulaDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
 
         rec = index.data(Qt.UserRole)
-        #renderer = rec.renderer
-        renderer = self.renderer
         svg = rec.svg_data
 
+        self.renderer.load(svg)
+        self.renderer.setAspectRatioMode(Qt.KeepAspectRatio)
 
-        #!renderer().viewBox().adjusted(0, -200, 0, 200))
+        vpad = settings.value("display/verticalPadding", 200, type=int)
+        rfactor = settings.value("display/reductionFactor", 24, type=float)
 
-        #renderer.load(svg.replace(b'currentColor', b'green'))
-        renderer.load(svg)
-        renderer.setAspectRatioMode(Qt.KeepAspectRatio)
-        renderer.setViewBox(renderer.viewBox().adjusted(0, -200, 0, 200))
+        self.renderer.setViewBox(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad))
 
-        if renderer:
-            hint = renderer.defaultSize() / 24
+        if self.renderer:
+            hint = self.renderer.defaultSize() / rfactor
         else:
             hint = QStyledItemDelegate.sizeHint(self, option, index)
 
         data = index.data()
+        logging.debug('delegate: rfactor = {}'.format(rfactor))
+        logging.debug('delegate: vpad {}'.format(vpad))
         logging.debug('delegate: formula = {}'.format(data))
         logging.debug('delegate sizeHint: {}'.format(hint))
         # look at renderer.defaultSize

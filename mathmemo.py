@@ -1,8 +1,8 @@
 #!/usr/bin/env -S python3 -O
 import logging, sys, os
 from functools import partial
-from PyQt5.QtCore import (pyqtSlot, QEvent, QSize, QItemSelection, QItemSelectionModel,
-                          QMimeData, QSettings, Qt, QUrl)
+from PyQt5.QtCore import (pyqtSlot, QCoreApplication, QEvent, QSize, QItemSelection,
+                          QItemSelectionModel, QMimeData, QSettings, Qt, QUrl)
 from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
 from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
@@ -10,11 +10,17 @@ from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog, QDialogButtonBox,
                              QFileDialog, QHBoxLayout, QMainWindow, QMenu, QMessageBox, QScrollArea,
                              QSizePolicy, QVBoxLayout, QWidget)
-
+from PyQt5.QtWebChannel import QWebChannel
 
 from texsyntax import LatexHighlighter
 import importlib.resources
 
+QCoreApplication.setApplicationName('moltencrux')
+QCoreApplication.setOrganizationName('MathMemo')
+settings = QSettings()
+from formulalist import gen_render_html
+
+print('settings: {}', id(settings))
 
 # Only log debug level messages in debug mode
 if __debug__:
@@ -86,26 +92,12 @@ from ui.settings_ui import Ui_settings
 
 #from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
 #                      mathjax_config, page_template)
-from mjrender import page_template
-'''
-void setHeight (QPlainTextEdit *ptxt, int nRows)
-{
-    QTextDocument *pdoc = ptxt->document ();
-    QFontMetrics fm (pdoc->defaultFont ());
-    QMargins margins = ptxt->contentsMargins ();
-    int nHeight = fm.lineSpacing () * nRows +
-        (pdoc->documentMargin () + ptxt->frameWidth ()) * 2 +
-        margins.top () + margins.bottom ();
-    ptxt->setFixedHeight (nHeight);
-}
-'''
-
+from mjrender import page_template, mathjax_v3_url
 
 
 class MainEqWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
-        self.settings = QSettings('moltencrux', 'MathMemo')
         # FormulaList.setSettings(self.settings) I don't think this is necessary
         self.initUI()
         self.page_template = page_template
@@ -125,8 +117,6 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         # asynchronous and worried if we started to enter a new formula very quickly, that
         # it might interfere with what got inserted into the list.
 
-        self.render = QWebEnginePage()
-
         #self.input_box.setPlaceholderText("Enter a formula here...")
 
         self.input_box.installEventFilter(self)
@@ -135,7 +125,9 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.splitter.setSizes([500, 350, 150])
         # self.preview.page().loadFinished.connect(self._on_load_finished)
         # self.render.loadFinished.connect(self._on_load_finished)
-        self.render.loadFinished.connect(self._on_load_finished)
+        # XXXX  debuging line below
+        self.preview.setPage(self.eq_list.formula_page)
+        # self.render.loadFinished.connect(self._on_load_finished)
 
         self.input_box.textChanged.connect(self.updatePreview)
 
@@ -156,6 +148,12 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         ###action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
         group.triggered.connect(self.copy_profile_changed)
         self.eq_list.itemDoubleClicked.connect(self.editItem)
+        ### Experimental
+
+        # self.channel = QWebChannel()
+        # self.handler = CallHandler()
+        # self.channel.registerObject('handler', self.handler)
+        # self.preview.page().setWebChannel(self.channel)
 
     def editItem(self, item):
         logging.debug('editItem: {}'.format(item))
@@ -180,7 +178,12 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
     def updatePreview(self):
         formula_str = self.input_box.toPlainText()
-        self.preview.setHtml(self.page_template.format(formula=formula_str), QUrl('file://'))
+        html = gen_render_html()
+        ###self.preview.setHtml(html.format(formula=formula_str), QUrl('file://'))
+        with open('/home/agc/mjout.debug.mm.html', 'wt') as f:
+            f.write(html)
+        self.eq_list.handler.setText(formula_str)
+
 
     def eventFilter(self, obj, event):
         if obj is self.input_box and event.type() == QEvent.FocusIn:
@@ -209,6 +212,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def _on_load_finished(self):
         # Extract the SVG output from the page and add an XML header
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
+        print('XXXXXXXXXXXXXXXXXX do we call this??')
         self.render.runJavaScript("""
             var mjelement = document.getElementById('mathjax-container');
             mjelement.getElementsByTagName('svg')[0].outerHTML;
@@ -287,12 +291,11 @@ class MainSettings(QDialog, Ui_settings):
     def __init__(self):
         self._settings_changed = False
         super().__init__()
-        self.settings = QSettings()
-        #self.settings = QSettings('moltencrux', 'MathMemo')
 
         self.initUI()
         self.setupUi(self)
         self.loadSettings()
+        #self.mathjax_ver_comboBox
     def initUI(self):
         ...
     def _settingsChanged(self):
@@ -308,15 +311,43 @@ class MainSettings(QDialog, Ui_settings):
     def on_buttonBox_rejected(self):
         self.loadSettings()
 
+    # settings_hooks = {
+    #     "copyImage/reductionFactor":
+    #         #copy_img_rfactor_doubleSpinBox.value()
+    # }
+    def on_mathjax_path_pushButton_clicked(self):
+        url, filter = QFileDialog.getOpenFileUrl(self, 'Select MathJax Location')
+        if url.isValid():
+            self.mathjax_path_lineEdit.setText(url.toString())
+
     def saveSettings(self):
-        self.settings.setValue("copyImage/reductionFactor", self.rfactor_doubleSpinBox.value())
-        print('saving: ', self.rfactor_doubleSpinBox.value())
-        #self.settings.sync()
+        settings.setValue("copyImage/reductionFactor",
+                               self.copy_img_rfactor_doubleSpinBox.value())
+        settings.setValue("display/verticalPadding", self.vert_display_img_pad_spinBox.value())
+
+        settings.setValue("display/reductionFactor",
+                               self.display_img_rfactor_doubleSpinBox.value())
+        settings.setValue("main/mathjaxVersion", self.mathjax_ver_comboBox.currentText())
+        settings.setValue("main/mathjaxUrl",
+                          self.mathjax_path_lineEdit.text())
+
+        # print('saving: ', self.rfactor_doubleSpinBox.value())
+        settings.sync()
 
     def loadSettings(self):
-        self.rfactor_doubleSpinBox.setValue(
-            self.settings.value("copyImage/reductionFactor", 16.0, type=float))
-        print('loading: ', self.settings.value("copyImage/reductionFactor", 16.0, type=float))
+        self.copy_img_rfactor_doubleSpinBox.setValue(
+            settings.value("copyImage/reductionFactor", 12.0, type=float))
+        self.vert_display_img_pad_spinBox.setValue(
+            settings.value("display/verticalPadding", 200, type=int))
+        self.display_img_rfactor_doubleSpinBox.setValue(
+            settings.value("display/reductionFactor", 24.0, type=float))
+        self.mathjax_ver_comboBox.setCurrentText(
+            settings.value("main/mathjaxVersion", '3', type=str))
+        self.mathjax_path_lineEdit.setText(
+            settings.value("main/mathjaxUrl", mathjax_v3_url, type=str))
+
+        print('settings: ver: ', settings.value("main/mathjaxVersion", '3', type=str))
+        print('loading: ', settings.value("copyImage/reductionFactor", 16.0, type=float))
 
 
 if __name__ == '__main__':
