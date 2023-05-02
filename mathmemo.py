@@ -1,5 +1,6 @@
 #!/usr/bin/env -S python3 -O
 import logging, sys, os
+import cProfile
 from functools import partial
 from PyQt5.QtCore import (pyqtSlot, QCoreApplication, QEvent, QSize, QItemSelection,
                           QItemSelectionModel, QMimeData, QSettings, Qt, QUrl)
@@ -18,7 +19,8 @@ import importlib.resources
 QCoreApplication.setApplicationName('moltencrux')
 QCoreApplication.setOrganizationName('MathMemo')
 settings = QSettings()
-from formulalist import gen_render_html
+from formulalist import CallHandler
+from mjrender import gen_render_html
 
 print('settings: {}', id(settings))
 
@@ -123,10 +125,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
         # sets proportions for the eq list, preview & input widgets
         self.splitter.setSizes([500, 350, 150])
-        # self.preview.page().loadFinished.connect(self._on_load_finished)
-        # self.render.loadFinished.connect(self._on_load_finished)
         # XXXX  debuging line below
-        self.preview.setPage(self.eq_list.formula_page)
         # self.render.loadFinished.connect(self._on_load_finished)
 
         self.input_box.textChanged.connect(self.updatePreview)
@@ -150,10 +149,11 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.eq_list.itemDoubleClicked.connect(self.editItem)
         ### Experimental
 
-        # self.channel = QWebChannel()
-        # self.handler = CallHandler()
-        # self.channel.registerObject('handler', self.handler)
-        # self.preview.page().setWebChannel(self.channel)
+        self.channel = QWebChannel()
+        self.handler = CallHandler()
+        self.channel.registerObject('handler', self.handler)
+        self.preview.page().setWebChannel(self.channel)
+        self.preview.setHtml(gen_render_html(), QUrl('file://'))
 
     def editItem(self, item):
         logging.debug('editItem: {}'.format(item))
@@ -176,13 +176,9 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         if response == QDialogButtonBox.Cancel or response == QDialogButtonBox.Ok:
             self.close()
 
-    def updatePreview(self):
+    def updatePreview(self, ):
         formula_str = self.input_box.toPlainText()
-        html = gen_render_html()
-        ###self.preview.setHtml(html.format(formula=formula_str), QUrl('file://'))
-        with open('/home/agc/mjout.debug.mm.html', 'wt') as f:
-            f.write(html)
-        self.eq_list.handler.setText(formula_str)
+        self.handler.setText(formula_str)
 
 
     def eventFilter(self, obj, event):
@@ -212,7 +208,6 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def _on_load_finished(self):
         # Extract the SVG output from the page and add an XML header
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        print('XXXXXXXXXXXXXXXXXX do we call this??')
         self.render.runJavaScript("""
             var mjelement = document.getElementById('mathjax-container');
             mjelement.getElementsByTagName('svg')[0].outerHTML;

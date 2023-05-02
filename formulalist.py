@@ -12,7 +12,8 @@ from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from PyQt5.QtWebChannel import QWebChannel
 from mjrender import (context, mathjax_v2_url, mathjax_v3_url, mathjax_v3_url_remote, mathjax_url,
                       mathjax_v2_config, mathjax_v3_config, page_template, javascript_v2_extract,
-                      javascript_v3_extract, qchannel_js, mj_enqueue, big_html)
+                      javascript_v3_extract, qchannel_js, mj_enqueue, big_html, gen_render_html)
+from time import perf_counter
 
 import matplotlib.pyplot as plt
 plt.rc('mathtext', fontset='cm')
@@ -35,25 +36,6 @@ settings = QSettings()
 
 
 # .format(url=mathjax_url, config=mathjax_config, context=context)
-def gen_render_html_orig():
-    settings.sync()
-    mathjax_version = settings.value('main/mathjaxVersion', '3', type=str)
-    mathjax_default_url = ''
-    mathjax_config = ''
-    if mathjax_version == '3':
-        mathjax_default_url = mathjax_v3_url
-        mathjax_config = mathjax_v3_config
-    elif mathjax_version == '2':
-        mathjax_default_url = mathjax_v2_url
-        mathjax_config = mathjax_v2_config
-
-    mathjax_url = settings.value("main/mathjaxUrl", mathjax_default_url, type=str)
-    html = page_template.format(qchannel=qchannel_js, mj_config=mathjax_config,
-                                url=mathjax_url, context=context)
-    return html
-
-def gen_render_html():
-    return big_html
 
 def render_latex_as_svg(latex_formula):
     fig, ax = plt.subplots()
@@ -72,6 +54,7 @@ FormulaData = namedtuple('FormulaData', ('svg_data', 'renderer'))
 
 class CallHandler(QObject):
     textChanged = pyqtSignal(str)
+    svgChanged = pyqtSignal(str, bytes)
 
     def __init__(self):
         super().__init__()
@@ -83,7 +66,7 @@ class CallHandler(QObject):
     def setText(self, text):
         self._text = text
         self.textChanged.emit(text)
-        print("emit textChanged")
+        # print("emit textChanged")
 
     text = pyqtProperty(str, fget=text, fset=setText, notify=textChanged)
 
@@ -92,9 +75,16 @@ class CallHandler(QObject):
         print('XOXOXOXOXXXXOOXOOX: call received')
         return QVariant({"abc": "def", "ab": 22})
 
-    @pyqtSlot(str)
-    def sendSvg(self, svg_data):
-        print('python output: ', svg_data)
+    @pyqtSlot(str, str)
+    def sendSvg(self, formula, svg):
+        svg_data = svg.encode()
+        self.svg_data = svg_data
+        self.formula = formula
+        print('PY: sendSvg: ')
+        print('PY:', formula)
+        print('PY:', svg)
+        print('PY: sending svgChanged signal: ', formula, perf_counter())
+        self.svgChanged.emit(formula, svg_data)
 
 
     # take an argument from javascript - JS:  handler.test1('hello!')
@@ -153,6 +143,7 @@ class FormulaList(QListWidget):
         self.handler = CallHandler()
         self.channel.registerObject('handler', self.handler)
         self.formula_page.setWebChannel(self.channel)
+        self.handler.svgChanged.connect(self.append_formula_svg)
 
     @classmethod
     def setSettings(cls, settings:QSettings):
@@ -330,6 +321,7 @@ class FormulaList(QListWidget):
         self.layout().addWidget(svg)
 
     def append_formula_svg(self, formula, svg:bytes):
+        print('append_formula_svg called: ', perf_counter())
 
         item = QListWidgetItem()
         item.setText(formula)
@@ -370,6 +362,7 @@ class FormulaList(QListWidget):
         self.addItem(item)
         # self.setItemWidget(item, svg_widget)
 
+        print('append_formula_svg called, addItem: ', perf_counter())
         self.scrollToBottom()
 
 
@@ -406,8 +399,6 @@ class FormulaList(QListWidget):
                 formula = self.formula_queue[0]
                 html = gen_render_html()
                 # self.formula_page.setHtml(html.format(formula=formula), QUrl('file://'))
-                with open('mmout.html', 'wt') as f:
-                    f.write(html.format(formula=formula))
 
     def save_as_text(self, filename):
         with open(filename, 'wt') as f:
@@ -430,8 +421,10 @@ class FormulaList(QListWidget):
 
     def append_formula(self, formula:str):
         if formula:
-            print('appending formula: acquiring mutex', formula)
+            self.handler.setText(formula)
+            return
             with QMutexLocker(self.formula_queue_mutex):
+                print('appending formula: acquiring mutex', formula)
                 # a mutex might be overkill here, since we don't have any explicit threads
                 # so really we should never hang up here waiting for it.
                 print('locked formula_queue_mutex')

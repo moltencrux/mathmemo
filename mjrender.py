@@ -2,6 +2,7 @@
 #from functools import partial
 #from PyQt5.QtWidgets import *
 #from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
+from PyQt5.QtCore import QSettings
 #from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
 #from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
@@ -20,6 +21,8 @@ import matplotlib.pyplot as plt
 
 # from PyQt5 import Qt
 # 'PyQt5.QtWebEngineWidgets.QWebEngineSettings.ShowScrollBars'
+
+settings = QSettings()
 
 
 context = r'''\newcommand{\Ex}{\mathop{\rm Ex}}
@@ -103,9 +106,9 @@ mathjax_v2_config = r"""
     }
   });
 </script>
-""".replace('{', '{{').replace('}', '}}')
+"""
 
-mathjax_v2_config_test = r"""
+mathjax_v2_config_test1 = r"""
 <script type="text/x-mathjax-config">
 MathJax.Hub.Config({
     extensions: ["tex2jax.js"],
@@ -331,7 +334,9 @@ big_html = r"""
         window.eq_jax = eq_jax;
         
         var updateText = function (text) {
-            MathJax.Hub.Queue(["Text", window.eq_jax, text, updateSvg]);
+            console.error('queueing updates: ' + text);
+            MathJax.Hub.Queue(["Text", window.eq_jax, text, [updateSvg, text]]);
+            //MathJax.Hub.Queue(["Text", window.eq_jax, text, updateSvg]);
             //window.mj_container.value = text;
             //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
             //MathJax.Hub.Queue(updateSvg);
@@ -381,7 +386,130 @@ big_html = r"""
 </html>
 """
 
+mathjax_v2_config_test = """
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+        extensions: ["tex2jax.js"],
+        extensions: ["tex2jax.js","MathEvents.js","MathZoom.js","MathMenu.js","toMathML.js","TeX/noErrors.js","TeX/noUndefined.js","TeX/AMSmath.js","TeX/AMSsymbols.js","fast-preview.js","AssistiveMML.js","[a11y]/accessibility-menu.js"],
+        jax: ["input/TeX","output/SVG","output/PreviewHTML"],
+	SVG: {
+	    useGlobalCache: false,
+        },
+    });
+    MathJax.Ajax.loadComplete("[MathJax]/config/TeX-AMS_SVG-full.js");
+</script>
+"""
+
+mj_v2_scripts = """
+<script type="text/javascript">
+    'use strict';
+    //was a separate script, but seems unnecessary, so commenting out for now
+    //MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+    
+    MathJax.Hub.Queue(function() {
+        var mj_container = document.getElementById("mathjax-container");
+        if( mj_container == null) {
+          console.error('mj_container is null');
+        }
+        window.mj_container = mj_container;
+        var eq_jax = MathJax.Hub.getAllJax("mathjax-container")[0];
+        window.eq_jax = eq_jax;
+
+        var updateText = function (text) {
+            console.error('queueing updates: ' + text);
+            console.error(text);
+            MathJax.Hub.Queue(["Text", window.eq_jax, text, [updateSvg, text]]);
+            //MathJax.Hub.Queue(["Text", window.eq_jax, text, updateSvg]);
+            //window.mj_container.value = text;
+            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+            //MathJax.Hub.Queue(updateSvg);
+            //MathJax.Hub.Queue(["Text", eq_jax, text]);
+            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, mj_container]);
+            //eq_jax.Text(text, updateSvg);
+
+            //mj_container.innerHTML = text;
+
+            //console.error('JS: updateText: ' + text);
+            //updateSvg();
+        };
+        window.updateText = updateText
+
+        function updateSvg (formula) {
+            var svgOutput;
+            try {
+                svgOutput = window.mj_container.getElementsByTagName('svg')[0].outerHTML;
+            }
+            catch (err) {
+                svgOutput = null;
+            }
+            window.eq_jax.originalText;
+
+            //svgOutput = document.getElementsByTagName('svg')[0].outerHTML;
+            //svgOutput = document.getElementById('mathjax-container').getElementsByTagName('svg')[0].outerHTML;
+            //svgOutput = window.mj_container.innerHTML;
+            if (svgOutput != null) {
+                console.error('JS update SVG, sending back')
+                console.error(svgOutput);
+                console.error('formula: ' + formula);
+                window.handler.sendSvg(formula, svgOutput);
+            }
+        }
+        window.updateSvg = updateSvg
+
+        new QWebChannel(qt.webChannelTransport, function (channel) {
+                var handler = channel.objects.handler;
+                window.handler = handler;
+                updateText(handler.text);
+                handler.textChanged.connect(updateText);
+            }
+        );
+
+    });
+
+</script>
+"""
+
+page_template = r"""
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<head>
+{mj_config}
+<script type="text/javascript" src="{url}"></script>
+<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+<mathjax id="mathjax-container" style="font-size:2.3em">\[{formula}\]</mathjax>
+</body>
+{mj_scripts}
+</html>
+"""
+
 plt.rc('mathtext', fontset='cm')
+def gen_render_html():
+    settings.sync()
+    mathjax_version = settings.value('main/mathjaxVersion', '3', type=str)
+    mathjax_default_url = ''
+    mathjax_config = ''
+    if mathjax_version == '3':
+        mathjax_default_url = mathjax_v3_url
+        mathjax_config = mathjax_v3_config
+    elif mathjax_version == '2':
+        mathjax_default_url = mathjax_v2_url
+        mathjax_config = mathjax_v2_config
+
+    mathjax_url = settings.value("main/mathjaxUrl", mathjax_default_url, type=str)
+    html = page_template.format(mj_config=mathjax_v2_config, url=mathjax_url,
+                             mj_scripts=mj_v2_scripts, formula='{}')
+    return html
+
+# with open('generated.html', 'wt') as f:
+#     f.write(gen_render_html())
+
+# with open('old_working.html', 'wt') as f:
+#     f.write(big_html)
+
 
 def render_latex_as_svg(latex_formula):
     fig, ax = plt.subplots()
