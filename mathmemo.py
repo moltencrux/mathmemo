@@ -179,7 +179,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
     def updatePreview(self, ):
         formula_str = self.input_box.toPlainText()
-        self.mj_renderer.submitFormula(formula_str)
+        self.mj_renderer.updatePreview(formula_str)
 
 
     def eventFilter(self, obj, event):

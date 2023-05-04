@@ -10,9 +10,9 @@ from PyQt5.QtGui import QPalette, QCursor, QIcon, QImage, QPainter, QPixmap, QCo
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from PyQt5.QtWebChannel import QWebChannel
-from mjrender import (context, mathjax_v2_url, mathjax_v3_url, mathjax_v3_url_remote, mathjax_url,
+from mjrender import (context, mathjax_v2_url, mathjax_v3_url, mathjax_v3_url_remote,
                       mathjax_v2_config, mathjax_v3_config, page_template, javascript_v2_extract,
-                      javascript_v3_extract, qchannel_js, mj_enqueue, big_html, gen_render_html,
+                      javascript_v3_extract, qchannel_js, mj_enqueue, gen_render_html,
                       CallHandler, MathJaxRenderer)
 
 from time import perf_counter
@@ -37,7 +37,6 @@ class CopyProfile(StrEnum):
 settings = QSettings()
 
 
-# .format(url=mathjax_url, config=mathjax_config, context=context)
 
 def render_latex_as_svg(latex_formula):
     fig, ax = plt.subplots()
