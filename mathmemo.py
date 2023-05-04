@@ -150,7 +150,9 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         ### Experimental
 
         self.channel = QWebChannel()
-        self.mj_renderer = MathJaxRenderer()
+        # self.mj_renderer = MathJaxRenderer() using a separate page causes svg rendering to break
+        # the QWebEnginePage must be associated with a view
+        self.mj_renderer = self.eq_list.mj_renderer
         self.preview.setPage(self.mj_renderer)
         # self.channel.registerObject('mj_renderer', self.mj_renderer)
         # self.preview.page().setWebChannel(self.channel)

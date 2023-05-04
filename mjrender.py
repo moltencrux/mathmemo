@@ -351,10 +351,11 @@ mj_v3_scripts = r"""
     var submitFormula = function (formula) {
         var math = MathJax.tex2svg(formula);  
         var math_svg = math.getElementsByTagName('svg')[0];
-        console.error('updateText called: ' + formula);
+        console.error('submitFormula called: ' + formula);
         console.error(typeof math_svg);
         console.error(math_svg);
         window.handler.sendSvg(formula, math_svg.outerHTML);
+        console.error('submitFormula', Math.floor(Date.now() / 1000))
     };
     
     var updateText = submitFormula
@@ -378,83 +379,93 @@ mj_v2_scripts = """
     //was a separate script, but seems unnecessary, so commenting out for now
     //MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
     
+    var updatePreview = function (formula) {
+        console.error('updatePreview:  queueing updates: ' + formula);
+        console.error('updatePreview', Math.floor(Date.now() / 1000))
+        console.error(formula);
+        MathJax.Hub.Queue(["Text", window.eq_jax, formula]);
+        
+        //MathJax.Hub.Queue(["Text", window.eq_jax, formula, updateSvg]);
+        //window.mj_container.value = formula;
+        //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+        //MathJax.Hub.Queue(updateSvg);
+        //MathJax.Hub.Queue(["Text", eq_jax, formula]);
+        //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+        //MathJax.Hub.Queue(["Typeset", MathJax.Hub, mj_container]);
+        //eq_jax.Text(formula, updateSvg);
+
+        //mj_container.innerHTML = formula;
+
+        //console.error('JS: updateText: ' + formula);
+        //updateSvg();
+    };
+    
+    var submitFormula = function (formula) {
+        console.error('submitFormula', Math.floor(Date.now() / 1000))
+        console.error('submitFormula: queueing updates: ' + formula);
+        console.error(formula);
+        //MathJax.Hub.Queue(function () {
+        //    window.eq_jax.style.visibility = "visible";
+        //});
+        MathJax.Hub.Queue(["Text", window.eq_jax, formula, [updateSvg, formula]]);
+        
+            
+        //MathJax.Hub.Queue(["Text", window.eq_jax, formula]);
+        
+        //MathJax.Hub.Queue(["Text", window.eq_jax, formula, updateSvg]);
+        //window.mj_container.value = formula;
+        //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+        //MathJax.Hub.Queue(updateSvg);
+        //MathJax.Hub.Queue(["Text", eq_jax, formula]);
+        //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
+        //MathJax.Hub.Queue(["Typeset", MathJax.Hub, mj_container]);
+        //eq_jax.Text(formula, updateSvg);
+
+        //mj_container.innerHTML = formula;
+
+        //console.error('JS: updateText: ' + formula);
+        //updateSvg();
+    };
+    
+    function updateSvg (formula) {
+        console.error('updateSvg', Math.floor(Date.now() / 1000))
+        const math = document.querySelector('#mathjax-container');
+        var math_svg = math.getElementsByTagName('svg')[0];
+        console.error('JS updateSvg: ' + math)
+        console.error('JS updateSvg: ' + math_svg)
+        
+        var svgOutput;
+        try {
+            svgOutput = window.mj_container.getElementsByTagName('svg')[0].outerHTML;
+        }
+        catch (err) {
+            svgOutput = null;
+        }
+
+        //svgOutput = document.getElementsByTagName('svg')[0].outerHTML;
+        //svgOutput = document.getElementById('mathjax-container').getElementsByTagName('svg')[0].outerHTML;
+        //svgOutput = window.mj_container.innerHTML;
+        if (math_svg != null) {
+            console.error('JS update SVG, sending back')
+            console.error(math_svg);
+            console.error('formula: ' + formula);
+            window.handler.sendSvg(formula, math_svg.outerHTML);
+        }
+    }
+    
     MathJax.Hub.Queue(function() {
         var mj_container = document.getElementById("mathjax-container");
-        if( mj_container == null) {
-          console.error('mj_container is null');
-        }
         window.mj_container = mj_container;
         var eq_jax = MathJax.Hub.getAllJax("mathjax-container")[0];
         window.eq_jax = eq_jax;
         
-        var updatePreview = function (formula) {
-            console.error('updatePreview:  queueing updates: ' + formula);
-            console.error(formula);
-            MathJax.Hub.Queue(["Text", window.eq_jax, formula]);
-            //MathJax.Hub.Queue(["Text", window.eq_jax, formula, updateSvg]);
-            //window.mj_container.value = formula;
-            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
-            //MathJax.Hub.Queue(updateSvg);
-            //MathJax.Hub.Queue(["Text", eq_jax, formula]);
-            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
-            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, mj_container]);
-            //eq_jax.Text(formula, updateSvg);
-
-            //mj_container.innerHTML = formula;
-
-            //console.error('JS: updateText: ' + formula);
-            //updateSvg();
-        };
-
-        var submitFormula = function (formula) {
-            console.error('submitFormula: queueing updates: ' + formula);
-            console.error(formula);
-            MathJax.Hub.Queue(["Text", window.eq_jax, formula, [updateSvg, formula]]);
-            //MathJax.Hub.Queue(["Text", window.eq_jax, formula, updateSvg]);
-            //window.mj_container.value = formula;
-            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
-            //MathJax.Hub.Queue(updateSvg);
-            //MathJax.Hub.Queue(["Text", eq_jax, formula]);
-            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, "mathjax-container"]);
-            //MathJax.Hub.Queue(["Typeset", MathJax.Hub, mj_container]);
-            //eq_jax.Text(formula, updateSvg);
-
-            //mj_container.innerHTML = formula;
-
-            //console.error('JS: updateText: ' + formula);
-            //updateSvg();
-        };
         
         window.updateText = submitFormula 
 
-        function updateSvg (formula) {
-            const math = document.querySelector('#mathjax-container');
-            var math_svg = math.getElementsByTagName('svg')[0];
-            console.error('JS updateSvg: ' + math)
-            console.error('JS updateSvg: ' + math_svg)
-            
-            var svgOutput;
-            try {
-                svgOutput = window.mj_container.getElementsByTagName('svg')[0].outerHTML;
-            }
-            catch (err) {
-                svgOutput = null;
-            }
-            window.eq_jax.originalText;
-
-            //svgOutput = document.getElementsByTagName('svg')[0].outerHTML;
-            //svgOutput = document.getElementById('mathjax-container').getElementsByTagName('svg')[0].outerHTML;
-            //svgOutput = window.mj_container.innerHTML;
-            if (math_svg != null) {
-                console.error('JS update SVG, sending back')
-                console.error(math_svg);
-                console.error('formula: ' + formula);
-                window.handler.sendSvg(formula, math_svg.outerHTML);
-            }
-        }
         window.updateSvg = updateSvg
 
         new QWebChannel(qt.webChannelTransport, function (channel) {
+                console.error('new QWebChannel')
                 var handler = channel.objects.handler;
                 window.handler = handler;
                 //updateText(handler.text);
@@ -462,6 +473,7 @@ mj_v2_scripts = """
                 //handler.textChanged.connect(updatePreview);
                 handler.formulaChanged.connect(updatePreview);
                 handler.formulaSubmitted.connect(submitFormula);
+                console.error('registered submitFormula')
             }
         );
 
@@ -578,6 +590,7 @@ class CallHandler(QObject):
         print('PY:', svg)
         print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
+        self.setFormula('')
 
 
     # take an argument from javascript - JS:  handler.test1('hello!')
@@ -596,9 +609,21 @@ class MathJaxRenderer(QWebEnginePage):
         self.channel = QWebChannel()
         self.setWebChannel(self.channel)
         self.handler = CallHandler()
+        # self.view = QWebEngineView()
+        # self.view.setPage(self)
         self.channel.registerObject('handler', self.handler)
         self.setHtml(gen_render_html(), QUrl('file://'))
+        self.loadFinished.connect(self._on_load_finished)
         self.handler.svgChanged.connect(self.formulaProcessed.emit)
+
+
+    def _on_load_finished(self):
+        # self.updatePreview('')
+        xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
+        # self.runJavaScript("""
+        #     var mjelement = document.getElementById('mathjax-container');
+        #     mjelement.getElementsByTagName('svg')[0].outerHTML;
+        # """, lambda result: self.update_svg(xml_header + result.encode()))
 
     def formula(self):
         return self._formula
@@ -626,6 +651,7 @@ class MathJaxRenderer(QWebEnginePage):
         print('PY:', svg)
         print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
+
 
 
     # take an argument from javascript - JS:  handler.test1('hello!')
@@ -677,13 +703,6 @@ class MathJaxRenderer(QWebEnginePage):
             self.render.setHtml(self.page_template.format(formula=formula_str),
                                 QUrl('file://'))
 
-    def _on_load_finished(self):
-        # Extract the SVG output from the page and add an XML header
-        xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        self.runJavaScript("""
-            var mjelement = document.getElementById('mathjax-container');
-            mjelement.getElementsByTagName('svg')[0].outerHTML;
-        """, lambda result: self.update_svg(xml_header + result.encode()))
 
     def update_svg(self, svg:bytes):
         # add XML header

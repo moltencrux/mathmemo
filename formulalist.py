@@ -101,8 +101,6 @@ class FormulaList(QListWidget):
 
         # self.channel = QWebChannel()
         self.mj_renderer = MathJaxRenderer()
-        # self.channel.registerObject('mj_renderer', self.mj_renderer)
-        # self.formula_page.setWebChannel(self.channel)
         self.mj_renderer.svgChanged.connect(self.append_formula_svg)
 
     @classmethod
