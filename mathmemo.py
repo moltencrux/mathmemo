@@ -20,7 +20,7 @@ QCoreApplication.setApplicationName('moltencrux')
 QCoreApplication.setOrganizationName('MathMemo')
 settings = QSettings()
 from formulalist import CallHandler
-from mjrender import gen_render_html
+from mjrender import gen_render_html, MathJaxRenderer
 
 print('settings: {}', id(settings))
 
@@ -150,10 +150,11 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         ### Experimental
 
         self.channel = QWebChannel()
-        self.handler = CallHandler()
-        self.channel.registerObject('handler', self.handler)
-        self.preview.page().setWebChannel(self.channel)
-        self.preview.setHtml(gen_render_html(), QUrl('file://'))
+        self.mj_renderer = MathJaxRenderer()
+        self.preview.setPage(self.mj_renderer)
+        # self.channel.registerObject('mj_renderer', self.mj_renderer)
+        # self.preview.page().setWebChannel(self.channel)
+        # self.preview.setHtml(gen_render_html(), QUrl('file://'))
 
     def editItem(self, item):
         logging.debug('editItem: {}'.format(item))
@@ -178,7 +179,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
     def updatePreview(self, ):
         formula_str = self.input_box.toPlainText()
-        self.handler.setText(formula_str)
+        self.mj_renderer.submitFormula(formula_str)
 
 
     def eventFilter(self, obj, event):

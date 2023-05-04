@@ -2,13 +2,15 @@
 #from functools import partial
 #from PyQt5.QtWidgets import *
 #from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
-from PyQt5.QtCore import QSettings
+from PyQt5.QtCore import QObject, QSettings, QUrl, pyqtProperty, pyqtSignal, pyqtSlot
 #from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
+from PyQt5.QtWebChannel import QWebChannel
 #from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
 #from io import BytesIO
 #from texsyntax import LatexHighlighter
 import matplotlib.pyplot as plt
+from time import perf_counter
 #
 #from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, QScrollArea,QApplication,
 #                             QHBoxLayout, QVBoxLayout, QMainWindow, QSizePolicy, QAbstractItemView)
@@ -215,7 +217,9 @@ mathjax_v3_config = r"""
     }
   };
 </script>
-""".replace('{', '{{').replace('}', '}}')
+"""
+
+#.replace('{', '{{').replace('}', '}}')
 
 qchannel_js = r"""
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
@@ -399,6 +403,51 @@ mathjax_v2_config_test = """
     MathJax.Ajax.loadComplete("[MathJax]/config/TeX-AMS_SVG-full.js");
 </script>
 """
+mathjax_v2_config_test = """
+<script type="text/x-mathjax-config">
+</script>
+"""
+
+mj_v3_scripts = r"""
+<script type="text/javascript">
+    'use strict';
+    
+    function typeset(code) {
+        MathJax.startup.promise = MathJax.startup.promise
+        .then(() => MathJax.typesetPromise(code()))
+        .catch((err) => console.error('Typeset failed: ' + err.message));
+        return MathJax.startup.promise;
+    };
+
+    var updatePreview = function (formula) {
+        typeset(() => {
+            console.error('updatePreview called: ' + formula);
+            const math = document.querySelector('#mathjax-container');
+            math.innerHTML = '\\[' + formula + '\\]';
+            return [math];
+        });
+    }; 
+
+    var updateText = function (text) {
+        var math = MathJax.tex2svg(text);  
+        var math_svg = math.getElementsByTagName('svg')[0];
+        console.error('updateText called: ' + text);
+        console.error(typeof math_svg);
+        console.error(math_svg);
+        window.handler.sendSvg(text, math_svg.outerHTML);
+    };
+    
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+            var handler = channel.objects.handler;
+            window.handler = handler;
+            //updateText(handler.text);
+            handler.textChanged.connect(updateText);
+            handler.formulaChanged.connect(updatePreview);
+        }
+    );
+
+</script>
+"""
 
 mj_v2_scripts = """
 <script type="text/javascript">
@@ -494,14 +543,16 @@ def gen_render_html():
     mathjax_config = ''
     if mathjax_version == '3':
         mathjax_default_url = mathjax_v3_url
-        mathjax_config = mathjax_v3_config
+        html = page_template.format(mj_config=mathjax_v3_config, url=mathjax_default_url,
+                                    mj_scripts=mj_v3_scripts, formula='{}')
     elif mathjax_version == '2':
         mathjax_default_url = mathjax_v2_url
-        mathjax_config = mathjax_v2_config
 
-    mathjax_url = settings.value("main/mathjaxUrl", mathjax_default_url, type=str)
-    html = page_template.format(mj_config=mathjax_v2_config, url=mathjax_url,
-                             mj_scripts=mj_v2_scripts, formula='{}')
+        mathjax_url = settings.value("main/mathjaxUrl", mathjax_default_url, type=str)
+        html = page_template.format(mj_config=mathjax_v2_config, url=mathjax_default_url,
+                                 mj_scripts=mj_v2_scripts, formula='{}')
+    with open('/tmp/tmp.pmIWl98k8x/mjv3dump.html', 'wt') as f:
+        f.write(html)
     return html
 
 # with open('generated.html', 'wt') as f:
@@ -523,14 +574,110 @@ def render_latex_as_svg(latex_formula):
     plt.close(fig)
     return svg_image
 
-class MathJaxRender(QWebEnginePage):
+class CallHandler(QObject):
+    textChanged = pyqtSignal(str)
+    formulaChanged = pyqtSignal(str)
+    svgChanged = pyqtSignal(str, bytes)
+
     def __init__(self):
         super().__init__()
-        self.page_template = page_template
+        self._text = ''
+        self._formula = ''
 
-        # self.loadFinished.connect(self._on_load_finished)
+    def text(self):
+        return self._text
 
-        self.copy_profile_button.setMenu(self.copy_menu)
+    def formula(self):
+        return self._formula
+
+    def setText(self, text):
+        self._text = text
+        self.textChanged.emit(text)
+        # print("emit textChanged")
+
+    def setFormula(self, formula):
+        self._formula = formula
+        self.formulaChanged.emit(formula)
+        # print("emit textChanged")
+
+    text = pyqtProperty(str, fget=text, fset=setText, notify=textChanged)
+    formula = pyqtProperty(str, fget=formula, fset=setFormula, notify=formulaChanged)
+
+    # I think the pyqtSlot decorateor lets you send a return value back to JS.
+    # and JS can call any method on the registerd handler/channel.
+    # @pyqtSlot(result=QVariant)
+    # def test(self):
+    #     print('XOXOXOXOXXXXOOXOOX: call received')
+    #     return QVariant({"abc": "def", "ab": 22})
+
+    @pyqtSlot(str, str)
+    def sendSvg(self, formula, svg):
+        svg_data = svg.encode()
+        self.svg_data = svg_data
+        self.formula = formula
+        print('PY: sendSvg: ')
+        print('PY:', formula)
+        print('PY:', svg)
+        print('PY: sending svgChanged signal: ', formula, perf_counter())
+        self.svgChanged.emit(formula, svg_data)
+
+
+    # take an argument from javascript - JS:  handler.test1('hello!')
+    # @pyqtSlot(QVariant, result=QVariant)
+    # def test1(self, args):
+    #     print('i got')
+    #     print(args)
+    #     return "ok"
+
+class MathJaxRenderer(QWebEnginePage):
+    formulaProcessed = CallHandler.svgChanged
+
+    def __init__(self):
+        super().__init__()
+        self._text = ""
+        self.channel = QWebChannel()
+        self.setWebChannel(self.channel)
+        self.handler = CallHandler()
+        self.channel.registerObject('handler', self.handler)
+        self.setHtml(gen_render_html(), QUrl('file://'))
+        self.handler.svgChanged.connect(self.formulaProcessed.emit)
+
+    def formula(self):
+        return self._formula
+
+    def submitFormula(self, formula):
+        self.handler.setText(formula)
+        # self.formulaProcessed.emit(formula)
+        # print("emit textChanged")
+
+    formula = pyqtProperty(str, fget=formula, fset=submitFormula, notify=formulaProcessed)
+
+    # I think the pyqtSlot decorateor lets you send a return value back to JS.
+    # and JS can call any method on the registerd handler/channel. WRONG.. not true
+    # @pyqtSlot(result=QVariant)
+    # def test(self):
+    #     print('XOXOXOXOXXXXOOXOOX: call received')
+    #     return QVariant({"abc": "def", "ab": 22})
+
+    @pyqtSlot(str, str)
+    def sendSvg(self, formula, svg):
+        svg_data = svg.encode()
+        self.svg_data = svg_data
+        self.formula = formula
+        print('PY: sendSvg: ')
+        print('PY:', formula)
+        print('PY:', svg)
+        print('PY: sending svgChanged signal: ', formula, perf_counter())
+        self.svgChanged.emit(formula, svg_data)
+
+
+    # take an argument from javascript - JS:  handler.test1('hello!')
+    # @pyqtSlot(QVariant, result=QVariant)
+    # def test1(self, args):
+    #     print('i got')
+    #     print(args)
+    #     return "ok"
+
 
     def append_content(self, content):
         # Append the formula to the list box
@@ -542,9 +689,10 @@ class MathJaxRender(QWebEnginePage):
         # self.text_area.page().runJavaScript(js_code)
         self.eq_list.append_formula(content)
 
-    def updatePreview(self):
-        formula_str = self.input_box.toPlainText()
-        self.preview.setHtml(self.page_template.format(formula=formula_str), QUrl('file://'))
+    def updatePreview(self, formula):
+        self.handler.updateFormula(formula)
+        #formula_str = self.input_box.toPlainText()
+        #self.preview.setHtml(self.page_template.format(formula=formula_str), QUrl('file://'))
 
     def eventFilter(self, obj, event):
         if obj is self.input_box and event.type() == QEvent.FocusIn:
