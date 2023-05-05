@@ -1,9 +1,5 @@
-#import sys
-#from functools import partial
-#from PyQt5.QtWidgets import *
-#from PyQt5.QtCore import Qt, QUrl, QEvent, QSize, QItemSelection, QItemSelectionModel, QMimeData, pyqtSlot
+
 from PyQt5.QtCore import QObject, QSettings, QUrl, pyqtProperty, pyqtSignal, pyqtSlot
-#from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
 from PyQt5.QtWebChannel import QWebChannel
 #from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
@@ -11,21 +7,10 @@ from PyQt5.QtWebChannel import QWebChannel
 #from texsyntax import LatexHighlighter
 import matplotlib.pyplot as plt
 from time import perf_counter
-#
-#from PyQt5.QtWidgets import (QWidget, QSlider, QLineEdit, QLabel, QPushButton, QScrollArea,QApplication,
-#                             QHBoxLayout, QVBoxLayout, QMainWindow, QSizePolicy, QAbstractItemView)
-#
-#from PyQt5 import QtWidgets, uic
-#
-#from formulalist import FormulaList
-#
+
 #from pysvg.parser import parse
 
-# from PyQt5 import Qt
-# 'PyQt5.QtWebEngineWidgets.QWebEngineSettings.ShowScrollBars'
-
 settings = QSettings()
-
 
 context = r'''\newcommand{\Ex}{\mathop{\rm Ex}}
                \newcommand{\T}{\mathop{\rm T}}
@@ -252,36 +237,6 @@ mj_enqueue = r"""
     });
 """
 
-
-page_template = r"""
-<head>
-<div id="placeholder"></div>
-<style>.box {{{{
-  width : 100%
-  margin: 0 auto 0 auto;
-  border: 1px solid black;
-  padding: 0 0 0 0 ;
-  text-align: center;
-}}}}</style>
-</head>
-
-<body>  
-
-{qchannel}
-
-{mj_config}
-  
-<script type="text/javascript" src="{url}"></script>
-
-<mathjax id="mathjax-context" style="font-size:2.3em">\[{context}\]</mathjax>
-<div class="box"><div id="rescale" style="display:inline-block">
-<mathjax id="mathjax-container" style="font-size:2.3em">\[{{formula}}\]</mathjax>
-</div></div>
-</body>
-"""
-
-    # .format(url=mathjax_url, config=mathjax_config, context=context)
-
 javascript_v3_extract = r'''
 var mjelement = document.getElementById('mathjax-container');
 mjelement.getElementsByTagName('svg')[0].outerHTML;
@@ -333,6 +288,13 @@ mj_v3_scripts = r"""
         typeset(() => {
             console.error('updatePreview called: ' + formula);
             const math = document.querySelector('#mathjax-container');
+            // const container = document.getElementById('rescale');
+            // var w = container.offsetWidth; 
+            // var W = container.parentNode.offsetWidth;
+            // if (w > W) {
+            //     math.style.fontSize = (100*W/w)+"%";
+            // }
+            // MathJax.startup.document.getMathItemsWithin(math)[0].Rerender();
             math.innerHTML = '\\[' + formula + '\\]';
             return [math];
         });
@@ -487,12 +449,24 @@ page_template = r"""
 <html lang="en">
 <meta charset="utf-8">
 <head>
+<head>
+<div id="placeholder"></div>
+<style>.box {{
+  width : 100%
+  margin: 0 auto 0 auto;
+  border: 1px solid black;
+  padding: 0 0 0 0 ;
+  text-align: center;
+}}</style>
+</head>
 {mj_config}
 <script type="text/javascript" src="{url}"></script>
 <script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body>
+<div class="box"><div id="rescale" style="display:inline-block">
 <mathjax id="mathjax-container" style="font-size:2.3em">\[{formula}\]</mathjax>
+</div></div>
 </body>
 {mj_scripts}
 </html>
@@ -514,15 +488,7 @@ def gen_render_html():
         mathjax_url = settings.value("main/mathjaxUrl", mathjax_default_url, type=str)
         html = page_template.format(mj_config=mathjax_v2_config, url=mathjax_default_url,
                                  mj_scripts=mj_v2_scripts, formula='{}')
-    with open('/tmp/tmp.pmIWl98k8x/mjv3dump.html', 'wt') as f:
-        f.write(html)
     return html
-
-# with open('generated.html', 'wt') as f:
-#     f.write(gen_render_html())
-
-# with open('old_working.html', 'wt') as f:
-#     f.write(big_html)
 
 
 def render_latex_as_svg(latex_formula):
@@ -582,7 +548,8 @@ class CallHandler(QObject):
     @pyqtSlot(str, str)
     def sendSvg(self, formula, svg):
         # called by JS, receives items and sends signal to listener.
-        svg_data = svg.encode()
+        xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
+        svg_data = xml_header + svg.encode()
         self.svg_data = svg_data
         self.formula = formula
         print('PY: sendSvg: ')
@@ -591,7 +558,6 @@ class CallHandler(QObject):
         print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
         self.setFormula('')
-
 
     # take an argument from javascript - JS:  handler.test1('hello!')
     # @pyqtSlot(QVariant, result=QVariant)
@@ -616,7 +582,6 @@ class MathJaxRenderer(QWebEnginePage):
         self.loadFinished.connect(self._on_load_finished)
         self.handler.svgChanged.connect(self.formulaProcessed.emit)
 
-
     def _on_load_finished(self):
         # self.updatePreview('')
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
@@ -631,15 +596,7 @@ class MathJaxRenderer(QWebEnginePage):
     def submitFormula(self, formula):
         self.handler.submitFormula(formula)
 
-
     formula = pyqtProperty(str, fget=formula, fset=submitFormula, notify=formulaProcessed)
-
-    # I think the pyqtSlot decorateor lets you send a return value back to JS.
-    # and JS can call any method on the registerd handler/channel. WRONG.. not true
-    # @pyqtSlot(result=QVariant)
-    # def test(self):
-    #     print('XOXOXOXOXXXXOOXOOX: call received')
-    #     return QVariant({"abc": "def", "ab": 22})
 
     @pyqtSlot(str, str)
     def sendSvg(self, formula, svg):
@@ -652,60 +609,5 @@ class MathJaxRenderer(QWebEnginePage):
         print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
 
-
-
-    # take an argument from javascript - JS:  handler.test1('hello!')
-    # @pyqtSlot(QVariant, result=QVariant)
-    # def test1(self, args):
-    #     print('i got')
-    #     print(args)
-    #     return "ok"
-
-
-    def append_content(self, content):
-        # Append the formula to the list box
-        content_html= f"{content}<br>"
-        if '\\(' in content and '\\)' in content:
-            # Use MathJax to render math expressions enclosed in \( and \)
-            content_html = content_html.replace('\\(', '<mathjax style="font-size:2.3em" >').replace('\\)', '</mathjax>')
-        # js_code = f"document.body.innerHTML += '{content_html}'; MathJax.typeset();"
-        # self.text_area.page().runJavaScript(js_code)
-        self.eq_list.append_formula(content)
-
     def updatePreview(self, formula):
-        #self.handler.setText(formula)
         self.handler.setFormula(formula)
-        #formula_str = self.input_box.toPlainText()
-        #self.preview.setHtml(self.page_template.format(formula=formula_str), QUrl('file://'))
-
-    def eventFilter(self, obj, event):
-        if obj is self.input_box and event.type() == QEvent.FocusIn:
-            # Clear the input box when it receives focus
-            # self.input_box.setPlainText('')
-            ...
-
-        if event.type() == QEvent.KeyPress and obj is self.input_box:
-            if event.key() == Qt.Key_Return and self.input_box.hasFocus():
-                if event.modifiers() & Qt.ControlModifier:
-                    self.add_current_formula()
-                    return True # this seems to delete the trailing \n.. interesting
-
-        return super().eventFilter(obj, event)
-
-    def add_current_formula(self):
-        formula_str = self.input_box.toPlainText()
-
-        if formula_str:
-            print('appending formula: ', formula_str)
-            self.eq_queue.append(formula_str)
-            print('svg: ', self.formula_svg)
-            self.input_box.clear()
-            self.render.setHtml(self.page_template.format(formula=formula_str),
-                                QUrl('file://'))
-
-
-    def update_svg(self, svg:bytes):
-        # add XML header
-        formula = self.eq_queue.pop(0)
-        self.eq_list.append_formula_svg(formula, svg)
-

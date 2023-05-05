@@ -1,6 +1,5 @@
 #!/usr/bin/env -S python3 -O
 import logging, sys, os
-import cProfile
 from functools import partial
 from PyQt5.QtCore import (pyqtSlot, QCoreApplication, QEvent, QSize, QItemSelection,
                           QItemSelectionModel, QMimeData, QSettings, Qt, QUrl)
@@ -86,11 +85,6 @@ elif ui_generated_available:
 else:
     logging.critical('UI imports unavailable, exiting...')
     sys.exit(-1)
-
-# XXX Temporary
-from ui.mainwindow_ui import Ui_MainWindow
-from ui.settings_ui import Ui_settings
-# XXX
 
 #from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
 #                      mathjax_config, page_template)
