@@ -140,7 +140,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.copy_profile_button.setMenu(self.eq_list.build_copy_menu(group))
         ###action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
         group.triggered.connect(self.copy_profile_changed)
-        self.eq_list.itemDoubleClicked.connect(self.editItem)
+        # self.eq_list.itemDoubleClicked.connect(self.editItem)
         ### Experimental
 
         self.channel = QWebChannel()

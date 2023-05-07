@@ -1,9 +1,8 @@
-
 from PyQt5.QtCore import QObject, QSettings, QUrl, pyqtProperty, pyqtSignal, pyqtSlot
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
 from PyQt5.QtWebChannel import QWebChannel
 #from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
-#from io import BytesIO
+from io import BytesIO
 #from texsyntax import LatexHighlighter
 import matplotlib.pyplot as plt
 from time import perf_counter
