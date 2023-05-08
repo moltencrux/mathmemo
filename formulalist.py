@@ -577,33 +577,31 @@ class FormulaDelegate(QStyledItemDelegate):
         #     """ Creates and returns the custom StarEditor object we'll use to edit
         #         the StarRating.
         #     """
-        print('createEditor: XXXXXXXXXXXXXXXXXXXXX')
-        if True or True:
-            editor = FormulaEdit(parent)
-            editor.editing_finished.connect(self.commit_and_close_editor)
-            return editor
+        editor = FormulaEdit(parent)
+        editor.editing_finished.connect(self.commit_and_close_editor)
+        return editor
         #     else:
         #         return QStyledItemDelegate.createEditor(self, parent, option, index)
         # Q
 
-    # def createEditor(self, parent, option, index):
-    #     """ Creates and returns the custom StarEditor object we'll use to edit
-    #         the StarRating.
-    #     """
-    #     if index.column() == 3:
-    #         editor = StarEditor(parent)
-    #         editor.editing_finished.connect(self.commit_and_close_editor)
-    #         return editor
-    #     else:
-    #         return QStyledItemDelegate.createEditor(self, parent, option, index)
+        # def createEditor(self, parent, option, index):
+        #     """ Creates and returns the custom StarEditor object we'll use to edit
+        #         the StarRating.
+        #     """
+        #     if index.column() == 3:
+        #         editor = StarEditor(parent)
+        #         editor.editing_finished.connect(self.commit_and_close_editor)
+        #         return editor
+        #     else:
+        #         return QStyledItemDelegate.createEditor(self, parent, option, index)
 
+    def setEditorData(self, editor, index):
+        """ Sets the data to be displayed and edited by our custom editor. """
+        print('setEditorData')
 
-        def setEditorData(self, editor, index):
-            """ Sets the data to be displayed and edited by our custom editor. """
-            print('setEditorData')
-
-        if index or True:
-            self.input_box.setPlainText(editor)
+        if index:
+            editor.input_box.setPlainText(index.data())
+            print('setting editor text')
         else:
             QStyledItemDelegate.setEditorData(self, editor, index)
 
