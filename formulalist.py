@@ -298,7 +298,8 @@ class FormulaList(QListWidget):
         print('append_formula_svg called: ', perf_counter())
 
         item = QListWidgetItem()
-        item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+        item.setFlags(
+            Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
         item.setText(formula)
 
         renderer = QSvgRenderer()
