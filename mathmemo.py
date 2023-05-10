@@ -187,9 +187,10 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         if event.type() == QEvent.KeyPress and obj is self.input_box:
             if event.key() == Qt.Key_Return and self.input_box.hasFocus():
                 if event.modifiers() & Qt.ControlModifier:
+                    print('ZZZZZZZZZZZZZcaught ctrl+enter')
                     self.commit_current_formula()
-                    return True # this seems to delete the trailing \n.. interesting
-
+                    return True  # this seems to delete the trailing \n.. interesting
+        return False
         return super().eventFilter(obj, event)
 
 

@@ -527,7 +527,9 @@ class CallHandler(QObject):
     def setFormula(self, formula):
         self._formula = formula
         self.formulaChanged.emit(formula)
-        # print("emit textChanged")
+
+    def updateFormula(self):
+        self.formulaChanged.emit(self._formula)
 
     def submitFormula(self, formula):
         self._formula = formula
@@ -582,12 +584,7 @@ class MathJaxRenderer(QWebEnginePage):
         self.handler.svgChanged.connect(self.formulaProcessed.emit)
 
     def _on_load_finished(self):
-        # self.updatePreview('')
-        xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        # self.runJavaScript("""
-        #     var mjelement = document.getElementById('mathjax-container');
-        #     mjelement.getElementsByTagName('svg')[0].outerHTML;
-        # """, lambda result: self.update_svg(xml_header + result.encode()))
+        self.handler.updateFormula()
 
     def formula(self):
         return self._formula

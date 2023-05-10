@@ -4,9 +4,10 @@ from enum import Enum, StrEnum
 from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QListWidget, QLabel, QSizePolicy,
                              QAbstractItemView, QListWidgetItem, QMenu, QStyle, QStyledItemDelegate,
                              QWidget)
-from PyQt5.QtCore import (pyqtProperty, pyqtSignal, pyqtSlot, QCoreApplication, QDir, QEvent, Qt,
-                          QMimeData, QMutex, QMutexLocker, QObject, QRectF, QSettings, QSize,
-                          QTemporaryFile, QUrl, QAbstractListModel, QVariant)
+from PyQt5.QtCore import (pyqtProperty, pyqtSignal, pyqtSlot, QCoreApplication, QDir, QEvent,
+                          QEventLoop, Qt, QMimeData, QMutex, QMutexLocker, QObject, QRectF,
+                          QSettings, QSize, QTemporaryFile, QUrl, QAbstractListModel, QVariant,
+                          QWaitCondition)
 from PyQt5.QtGui import QPalette, QCursor, QIcon, QImage, QPainter, QPixmap, QColor
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWebEngineWidgets import QWebEnginePage
@@ -71,8 +72,6 @@ class FormulaList(QListWidget):
 
         self.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.setUniformItemSizes(False)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
         self.setSpacing(1)
 
         self.setViewMode(QListWidget.ListMode)
@@ -99,6 +98,12 @@ class FormulaList(QListWidget):
         self.itemDoubleClicked.connect(self.editItem)
         self.delegate = FormulaDelegate()
         self.setItemDelegate(self.delegate)
+        self.setEditTriggers(QAbstractItemView.DoubleClicked)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragEnabled(True)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setAcceptDrops(True)
+        self.setDefaultDropAction(Qt.MoveAction)
 
         # self.channel = QWebChannel()
         self.mj_renderer = MathJaxRenderer()
@@ -119,6 +124,16 @@ class FormulaList(QListWidget):
             else:
                 ...
 
+    # def closeEditor_disable(self, editor, hint):
+    #     if editor.editingFinished():
+    #         # is this redundtant somehow? should we check if the model is updated as well?
+    #         # seems like this check alone was not sufficient to keep it open, and we had to
+    #         # stop the data from being comitted as well.
+    #         print(f'>> Closing editor')
+    #         super().closeEditor(editor, hint)
+    #     else:
+    #         # should we set up the callback here to close wehn procesed??
+    #         print(f'>> Not closing editor')
 
     def listContextMenuRequested(self, pos):
         print('context menu requested')
@@ -600,7 +615,9 @@ class FormulaDelegate(QStyledItemDelegate):
         print('setEditorData')
 
         if index:
-            editor.input_box.setPlainText(index.data())
+            formula = index.data()
+            editor.input_box.setPlainText(formula)
+            # editor.updatePreview() # the above line should generate this signal
             print('setting editor text')
         else:
             QStyledItemDelegate.setEditorData(self, editor, index)
@@ -614,14 +631,21 @@ class FormulaDelegate(QStyledItemDelegate):
         """ Get the data from our custom editor and stuffs it into the model.
         """
         print('setModelData')
-        model.setData(index, )
 
-        # retreive formula
-        formula = editor.input_box.toPlainText()
-        model.setData(index, formula)
-        # retreive SVG data
-        rec = FormulaData(svg, None)
+        # retrieve formula
+        formula, svg_data = editor.getFormulaData()
+        rec = FormulaData(svg_data, None)
+
+        #editor.input_box.setFocus()
+        model.setData(index, editor.formula)
         model.setData(index, rec, Qt.UserRole)
+
+        '''
+        # retreive and encapsulate SVG data
+        rec = FormulaData(editor.svg_data, editor.formula)
+        model.setData(index, rec, Qt.UserRole)
+        print(editor.svg_data.decode())
+        '''
 
 
         # item = QListWidgetItem()
@@ -633,19 +657,21 @@ class FormulaDelegate(QStyledItemDelegate):
         # renderer.setAspectRatioMode(Qt.KeepAspectRatio)
         # item.setData(Qt.UserRole, rec)
 
-    #     if index.column() == 3:
-    #         model.setData(index, editor.star_rating.star_count)
-    #     else:
-    #         QStyledItemDelegate.setModelData(self, editor, model, index)
+        #     if index.column() == 3:
+        #         model.setData(index, editor.star_rating.star_count)
+        #     else:
+        #         QStyledItemDelegate.setModelData(self, editor, model, index)
+
 
     def commit_and_close_editor(self):
         """ Erm... commits the data and closes the editor. :) """
-    #     editor = self.sender()
+        print('commit_and_close_editor called')
+        editor = self.sender()
 
-    #     # The commitData signal must be emitted when we've finished editing
-    #     # and need to write our changed back to the model.
-    #     self.commitData.emit(editor)
-    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
+        # The commitData signal must be emitted when we've finished editing
+        # and need to write our changed back to the model.
+        self.commitData.emit(editor)
+        self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
     def updateEditorGeometry(self, editor, option, index):
         print('updateeditorgeometry')
@@ -665,6 +691,8 @@ class FormulaDelegate(QStyledItemDelegate):
 from ui.settings_ui import Ui_settings
 from ui.formulaedit_ui import Ui_FormulaEdit
 
+# how to prevent closing of editor i think
+# https://stackoverflow.com/questions/54623332/qtableview-prevent-departure-from-cell-and-closure-of-delegate-editor
 
 class FormulaEdit(QWidget, Ui_FormulaEdit):
 
@@ -677,7 +705,13 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.initUI()
         self.svg_data = None
         self.formula = None
-        #self.mj_renderer.x.connect
+        self.preview.setPage(self.mj_renderer)
+        self.input_box.textChanged.connect(self.updatePreview)
+        self.mj_renderer.svgChanged.connect(self.setFormulaData)
+        self.installEventFilter(self)  # is this necessary?
+        self.waitPreview = QMutex()
+        self.previewUpdated = QWaitCondition()
+        self.loop = QEventLoop()
 
     def initUI(self):
         self.setupUi(self)
@@ -685,9 +719,27 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         #self.mj_renderer.formulaProcessed.connect(X)
         self.preview.setPage(self.mj_renderer)
 
-    def XXXMyData(self, formula:str, svg_data:bytes):
+    def setFormulaData(self, formula:str, svg_data:bytes):
         self.svg_data = svg_data
         self.formula = formula
+        print('ZZZZZ: formula data updating')
+        self.input_box.setUpdatesEnabled(True)
+
+        if self.loop.isRunning():
+            self.loop.quit()
+        else:
+            print('This should not happen')
+        # self.waitPreview.unlock()
+
+    def getFormulaData(self):
+        formula = self.input_box.toPlainText()
+        self.mj_renderer.submitFormula(formula)
+        self.loop.exec()
+        return self.formula, self.svg_data
+
+    def editingFinished(self):
+        return self.formula is not None
+
 
     def eventFilter(self, obj, event):
         if obj is self.input_box and event.type() == QEvent.FocusIn:
@@ -695,15 +747,32 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             # self.input_box.setPlainText('')
             ...
 
-        if event.type() == QEvent.KeyPress and obj is self.input_box:
+        if event.type() == QEvent.KeyPress and obj is self:
+            print('editor: XXX got keypress XXXXXXXXXXXXXXXXX')
             if event.key() == Qt.Key_Return and self.input_box.hasFocus():
                 if event.modifiers() & Qt.ControlModifier:
-                    self.input_box.setUpdatesEnabled(False)
+                    # disabling edits while svg renders, should be quick. Might reenable it s/w
+                    print('ZZZZZZZZZZZZZZZZZZz disabling updates')
+                    # self.input_box.setUpdatesEnabled(False)
+                    self.setEnabled(False)  # disable editor while processing
                     formula = self.input_box.toPlainText()
+                    # self.waitPreview.lock()
                     self.mj_renderer.submitFormula(formula)
+                    # self.previewUpdated.wait(self.waitPreview)
+                    if not self.editingFinished():
+                        print("we really should be finished ZZZZZZZZZZZZZZZZZZZZZZZ")
+                    else:
+                        print("YEAH! we are finished XXXXXXXXXXXXXXXX")
                     #reenable after formula comitted
                     ###XXXwill this change???
-                    self.commit_current_formula()
-                    return True # this seems to delete the trailing \n.. interesting
+                    # self.commit_current_formula()
+                    # return False# this seems to delete the trailing \n.. interesting
+                    return True
 
         return super().eventFilter(obj, event)
+        return False
+
+    def updatePreview(self):
+        formula = self.input_box.toPlainText()
+        print('updatePreview: ', formula)
+        self.mj_renderer.updatePreview(formula)
