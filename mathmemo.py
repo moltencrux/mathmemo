@@ -9,7 +9,7 @@ from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
 
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog, QDialogButtonBox,
                              QFileDialog, QHBoxLayout, QMainWindow, QMenu, QMessageBox, QScrollArea,
-                             QSizePolicy, QVBoxLayout, QWidget)
+                             QSizePolicy, QVBoxLayout, QWidget, QListWidgetItem)
 from PyQt5.QtWebChannel import QWebChannel
 
 from texsyntax import LatexHighlighter
@@ -106,7 +106,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def initUI(self):
         self.setupUi(self)
 
-        self.highlight = LatexHighlighter(self.input_box.document())
+        #self.highlight = LatexHighlighter(self.input_box.document())
 
         # use a separate QWebEngineView for rendering.  Might could be a QWebEnginePage
         # I think I did it like this because I was worried that the page processing was
@@ -115,14 +115,14 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
         #self.input_box.setPlaceholderText("Enter a formula here...")
 
-        self.input_box.installEventFilter(self)
+        # self.input_box.installEventFilter(self)
 
         # sets proportions for the eq list, preview & input widgets
-        self.splitter.setSizes([500, 350, 150])
+        #self.splitter.setSizes([500, 350, 150])
         # XXXX  debuging line below
         # self.render.loadFinished.connect(self._on_load_finished)
 
-        self.input_box.textChanged.connect(self.updatePreview)
+        # self.input_box.textChanged.connect(self.updatePreview)
 
         # settings UI
         self.settings_ui = MainSettings()
@@ -147,7 +147,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         # self.mj_renderer = MathJaxRenderer() using a separate page causes svg rendering to break
         # the QWebEnginePage must be associated with a view
         self.mj_renderer = self.eq_list.mj_renderer
-        self.preview.setPage(self.mj_renderer)
+        # self.preview.setPage(self.mj_renderer)
         # self.channel.registerObject('mj_renderer', self.mj_renderer)
         # self.preview.page().setWebChannel(self.channel)
         # self.preview.setHtml(gen_render_html(), QUrl('file://'))
@@ -179,19 +179,22 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
 
     def eventFilter(self, obj, event):
-        if obj is self.input_box and event.type() == QEvent.FocusIn:
-            # Clear the input box when it receives focus
-            # self.input_box.setPlainText('')
-            ...
+        ...
 
-        if event.type() == QEvent.KeyPress and obj is self.input_box:
-            if event.key() == Qt.Key_Return and self.input_box.hasFocus():
-                if event.modifiers() & Qt.ControlModifier:
-                    print('ZZZZZZZZZZZZZcaught ctrl+enter')
-                    self.commit_current_formula()
-                    return True  # this seems to delete the trailing \n.. interesting
-        return False
-        return super().eventFilter(obj, event)
+    # def eventFilter(self, obj, event):
+    #     if obj is self.input_box and event.type() == QEvent.FocusIn:
+    #         # Clear the input box when it receives focus
+    #         # self.input_box.setPlainText('')
+    #         ...
+    #
+    #       if event.type() == QEvent.KeyPress and obj is self.input_box:
+    #         if event.key() == Qt.Key_Return and self.input_box.hasFocus():
+    #             if event.modifiers() & Qt.ControlModifier:
+    #                 print('ZZZZZZZZZZZZZcaught ctrl+enter')
+    #                 self.commit_current_formula()
+    #                 return True  # this seems to delete the trailing \n.. interesting
+    #     return False
+    #     return super().eventFilter(obj, event)
 
 
     def commit_current_formula(self):
@@ -217,8 +220,16 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.eq_list.append_formula_svg(formula, svg)
 
     @pyqtSlot()
-    def on_add_formula_button_clicked(self):
-        self.add_current_formula()
+    def on_add_new_button_clicked(self):
+        item = QListWidgetItem()
+        item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
+                      Qt.ItemIsDragEnabled)
+        # item.setHidden(True)
+        self.eq_list.addItem(item)
+        self.eq_list.editItem(item)
+        # editItem doesn't block, so we don't need to delete anything if user abandons the edit
+        # Looks like it needs to be handled in the delegate or editor.
+
 
     @pyqtSlot()
     def on_copy_button_clicked(self):
@@ -301,6 +312,7 @@ class MainSettings(QDialog, Ui_settings):
     def on_buttonBox_accepted(self):
         self.saveSettings()
 
+    @pyqtSlot()
     def on_buttonBox_rejected(self):
         self.loadSettings()
 
@@ -308,6 +320,7 @@ class MainSettings(QDialog, Ui_settings):
     #     "copyImage/reductionFactor":
     #         #copy_img_rfactor_doubleSpinBox.value()
     # }
+    @pyqtSlot()
     def on_mathjax_path_pushButton_clicked(self):
         url, filter = QFileDialog.getOpenFileUrl(self, 'Select MathJax Location')
         if url.isValid():

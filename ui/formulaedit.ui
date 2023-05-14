@@ -15,19 +15,19 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <property name="spacing">
-    <number>1</number>
+    <number>0</number>
    </property>
    <property name="leftMargin">
-    <number>1</number>
+    <number>0</number>
    </property>
    <property name="topMargin">
-    <number>1</number>
+    <number>0</number>
    </property>
    <property name="rightMargin">
-    <number>1</number>
+    <number>0</number>
    </property>
    <property name="bottomMargin">
-    <number>1</number>
+    <number>0</number>
    </property>
    <item>
     <layout class="QVBoxLayout" name="verticalLayout">
@@ -90,7 +90,7 @@
              </sizepolicy>
             </property>
             <property name="toolTip">
-             <string>Discard changes</string>
+             <string>Select copy profile</string>
             </property>
             <property name="text">
              <string>...</string>
@@ -122,22 +122,19 @@
            </widget>
           </item>
           <item>
-           <widget class="QToolButton" name="add_formula_button">
+           <widget class="QToolButton" name="commit_formula_button">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
               <horstretch>0</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
-            <property name="toolTip">
-             <string>Ctrl+Enter to commit formula</string>
-            </property>
             <property name="text">
              <string>...</string>
             </property>
             <property name="icon">
              <iconset resource="mathmemo.qrc">
-              <normaloff>:/icons/list-add-symbolic.svg</normaloff>:/icons/list-add-symbolic.svg</iconset>
+              <normaloff>:/icons/emblem-ok-symbolic.svg</normaloff>:/icons/emblem-ok-symbolic.svg</iconset>
             </property>
            </widget>
           </item>
@@ -153,10 +150,10 @@
           </sizepolicy>
          </property>
          <property name="plainText">
-          <string/>
+          <string>Enter a formula here..., Ctrl+Enter to commit.</string>
          </property>
          <property name="placeholderText">
-          <string>Enter a formula here..., Ctrl+Enter to commit.</string>
+          <string>Enter a formula here...</string>
          </property>
         </widget>
        </item>

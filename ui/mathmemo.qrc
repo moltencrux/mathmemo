@@ -1,5 +1,6 @@
 <RCC>
   <qresource>
+    <file>icons/emblem-ok-symbolic.svg</file>
     <file>icons/go-next-symbolic.svg</file>
     <file>icons/user-trash-symbolic.svg</file>
     <file>icons/list-add-symbolic.svg</file>

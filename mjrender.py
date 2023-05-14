@@ -558,7 +558,7 @@ class CallHandler(QObject):
         print('PY:', svg)
         print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
-        self.setFormula('')
+        #self.setFormula('')
 
     # take an argument from javascript - JS:  handler.test1('hello!')
     # @pyqtSlot(QVariant, result=QVariant)
@@ -568,7 +568,7 @@ class CallHandler(QObject):
     #     return "ok"
 
 class MathJaxRenderer(QWebEnginePage):
-    formulaProcessed = CallHandler.svgChanged
+    formulaProcessed = pyqtSignal(str, bytes)
 
     def __init__(self):
         super().__init__()
@@ -581,6 +581,7 @@ class MathJaxRenderer(QWebEnginePage):
         self.channel.registerObject('handler', self.handler)
         self.setHtml(gen_render_html(), QUrl('file://'))
         self.loadFinished.connect(self._on_load_finished)
+        print('connecting call handler to formula processed')
         self.handler.svgChanged.connect(self.formulaProcessed.emit)
 
     def _on_load_finished(self):
@@ -594,6 +595,7 @@ class MathJaxRenderer(QWebEnginePage):
 
     formula = pyqtProperty(str, fget=formula, fset=submitFormula, notify=formulaProcessed)
 
+    '''
     @pyqtSlot(str, str)
     def sendSvg(self, formula, svg):
         svg_data = svg.encode()
@@ -604,6 +606,7 @@ class MathJaxRenderer(QWebEnginePage):
         print('PY:', svg)
         print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
+    '''
 
     def updatePreview(self, formula):
         self.handler.setFormula(formula)
