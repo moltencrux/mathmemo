@@ -522,7 +522,6 @@ class CallHandler(QObject):
     def setText(self, text):
         self._text = text
         self.textChanged.emit(text)
-        # print("emit textChanged")
 
     def setFormula(self, formula):
         self._formula = formula
@@ -539,8 +538,8 @@ class CallHandler(QObject):
     text = pyqtProperty(str, fget=text, fset=setText, notify=textChanged)
     formula = pyqtProperty(str, fget=formula, fset=setFormula, notify=formulaChanged)
 
-    # I think the pyqtSlot decorateor lets you send a return value back to JS.
-    # and JS can call any method on the registerd handler/channel.
+    # I think the pyqtSlot decorator lets you send a return value back to JS.
+    # and JS can call any method on the registered handler/channel.
     # @pyqtSlot(result=QVariant)
     # def test(self):
     #     print('XOXOXOXOXXXXOOXOOX: call received')
@@ -558,14 +557,8 @@ class CallHandler(QObject):
         print('PY:', svg)
         print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
-        #self.setFormula('')
+        self.setFormula('')
 
-    # take an argument from javascript - JS:  handler.test1('hello!')
-    # @pyqtSlot(QVariant, result=QVariant)
-    # def test1(self, args):
-    #     print('i got')
-    #     print(args)
-    #     return "ok"
 
 class MathJaxRenderer(QWebEnginePage):
     formulaProcessed = pyqtSignal(str, bytes)
@@ -576,12 +569,9 @@ class MathJaxRenderer(QWebEnginePage):
         self.channel = QWebChannel()
         self.setWebChannel(self.channel)
         self.handler = CallHandler()
-        # self.view = QWebEngineView()
-        # self.view.setPage(self)
         self.channel.registerObject('handler', self.handler)
         self.setHtml(gen_render_html(), QUrl('file://'))
         self.loadFinished.connect(self._on_load_finished)
-        print('connecting call handler to formula processed')
         self.handler.svgChanged.connect(self.formulaProcessed.emit)
 
     def _on_load_finished(self):
@@ -594,19 +584,6 @@ class MathJaxRenderer(QWebEnginePage):
         self.handler.submitFormula(formula)
 
     formula = pyqtProperty(str, fget=formula, fset=submitFormula, notify=formulaProcessed)
-
-    '''
-    @pyqtSlot(str, str)
-    def sendSvg(self, formula, svg):
-        svg_data = svg.encode()
-        self.svg_data = svg_data
-        self.formula = formula
-        print('PY: sendSvg: ')
-        print('PY:', formula)
-        print('PY:', svg)
-        print('PY: sending svgChanged signal: ', formula, perf_counter())
-        self.svgChanged.emit(formula, svg_data)
-    '''
 
     def updatePreview(self, formula):
         self.handler.setFormula(formula)
