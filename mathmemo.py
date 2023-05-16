@@ -1,26 +1,16 @@
 #!/usr/bin/env -S python3 -O
 import logging, sys, os
-from functools import partial
-from PyQt5.QtCore import (pyqtSlot, QCoreApplication, QEvent, QSize, QItemSelection,
-                          QItemSelectionModel, QMimeData, QSettings, Qt, QUrl)
-from PyQt5.QtGui import QTextDocument, QPalette, QColor, QCursor, QClipboard, QImage, QPainter
-from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView, QWebEngineSettings
-from PyQt5.QtSvg import QSvgWidget, QGraphicsSvgItem, QSvgRenderer
+from PyQt5.QtCore import pyqtSlot, QCoreApplication, QSettings, Qt
 
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog, QDialogButtonBox,
-                             QFileDialog, QHBoxLayout, QMainWindow, QMenu, QMessageBox, QScrollArea,
-                             QSizePolicy, QVBoxLayout, QWidget, QListWidgetItem)
+                             QFileDialog, QMainWindow, QMenu, QMessageBox, QListWidgetItem)
 from PyQt5.QtWebChannel import QWebChannel
 
-from texsyntax import LatexHighlighter
 import importlib.resources
 
 QCoreApplication.setApplicationName('moltencrux')
 QCoreApplication.setOrganizationName('MathMemo')
 settings = QSettings()
-from formulalist import CallHandler
-from mjrender import gen_render_html, MathJaxRenderer
-
 
 # Only log debug level messages in debug mode
 if __debug__:

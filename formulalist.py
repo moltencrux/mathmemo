@@ -1,25 +1,17 @@
 import logging, sys, os
 from functools import partial
 from enum import Enum, StrEnum
-from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QApplication, QListWidget, QLabel,
-                             QSizePolicy, QAbstractItemView, QListWidgetItem, QMenu, QPlainTextEdit,
-                             QStyle, QStyledItemDelegate, QWidget)
-from PyQt5.QtCore import (pyqtProperty, pyqtSignal, pyqtSlot, QCoreApplication, QDir, QEvent,
-                          QEventLoop, Qt, QMimeData, QMutex, QMutexLocker, QObject, QPoint, QRectF,
-                          QSettings, QSize, QTemporaryFile, QUrl, QAbstractListModel, QVariant,
+from PyQt5.QtWidgets import (qApp, QAction, QActionGroup, QListWidget, QSizePolicy,
+                             QAbstractItemView, QListWidgetItem, QStyle, QStyledItemDelegate,
+                             QWidget)
+from PyQt5.QtCore import (pyqtSignal, pyqtSlot, QDir, QEvent, QEventLoop, Qt, QMimeData, QMutex,
+                          QMutexLocker, QPoint, QRectF, QSettings, QSize, QTemporaryFile, QUrl,
                           QWaitCondition, QPersistentModelIndex, QModelIndex)
-from PyQt5.QtGui import QPalette, QCursor, QIcon, QImage, QPainter, QPixmap, QColor
+from PyQt5.QtGui import QPalette, QImage, QPainter, QColor
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
-from PyQt5.QtWebEngineWidgets import QWebEnginePage
-from PyQt5.QtWebChannel import QWebChannel
-from mjrender import (context, mathjax_v2_url, mathjax_v3_url, mathjax_v3_url_remote,
-                      mathjax_v2_config, mathjax_v3_config, page_template, javascript_v2_extract,
-                      javascript_v3_extract, qchannel_js, mj_enqueue, gen_render_html,
-                      CallHandler, MathJaxRenderer)
+from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
 
 from texsyntax import LatexHighlighter
-
-from time import perf_counter, sleep
 
 import matplotlib.pyplot as plt
 plt.rc('mathtext', fontset='cm')
@@ -28,8 +20,8 @@ from menubuilder import build_menu, disable_unused_submenus
 from collections import namedtuple
 
 from io import BytesIO
-import typing
-from typing import overload
+
+
 class CopyProfile(StrEnum):
     SVG = 'SVG'
     SVG_TEXT = 'SVG Text'
