@@ -21,7 +21,6 @@ settings = QSettings()
 from formulalist import CallHandler
 from mjrender import gen_render_html, MathJaxRenderer
 
-print('settings: {}', id(settings))
 
 # Only log debug level messages in debug mode
 if __debug__:
@@ -167,7 +166,6 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def show_settings_ui(self):
         response = self.settings_ui.exec_()
 
-        print("response: ", response)
         if response == QDialogButtonBox.Apply or response == QDialogButtonBox.Ok:
             self.settings_ui.saveSettings()
         if response == QDialogButtonBox.Cancel or response == QDialogButtonBox.Ok:
@@ -201,9 +199,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         formula_str = self.input_box.toPlainText()
 
         if formula_str:
-            print('appending formula: ', formula_str)
             self.eq_list.append_formula(formula_str)
-            print('svg: ', self.formula_svg)
             self.input_box.clear()
 
     def _on_load_finished(self):
@@ -351,9 +347,6 @@ class MainSettings(QDialog, Ui_settings):
             settings.value("main/mathjaxVersion", '3', type=str))
         self.mathjax_path_lineEdit.setText(
             settings.value("main/mathjaxUrl", mathjax_v3_url, type=str))
-
-        print('settings: ver: ', settings.value("main/mathjaxVersion", '3', type=str))
-        print('loading: ', settings.value("copyImage/reductionFactor", 16.0, type=float))
 
 
 if __name__ == '__main__':

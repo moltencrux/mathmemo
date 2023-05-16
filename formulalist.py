@@ -110,7 +110,6 @@ class FormulaList(QListWidget):
 
         # self.channel = QWebChannel()
         self.mj_renderer = MathJaxRenderer()
-        print('connecting formula procesed handler to formula svg')
         self.mj_renderer.formulaProcessed.connect(self.append_formula_svg)
         #self.installEventFilter(self)
 
@@ -177,7 +176,6 @@ class FormulaList(QListWidget):
 
         # create a QMimeData object and set the SVG data
         mime_data = QMimeData()
-        print("copySVG: image type: ", type(self.itemWidget(item)))
         # mime_data.setData("image/svg+xml", self.images[index])
         mime_data.setData("image/svg", svg.replace(b'currentColor', b'red')) # works for Anki
 
@@ -189,7 +187,7 @@ class FormulaList(QListWidget):
         self.clipboard.setMimeData(mime_data)
 
         if self.clipboard.mimeData().hasImage():
-            print('has image')
+            ...
 
     @register
     def copySvgText(self, index):
@@ -291,7 +289,6 @@ class FormulaList(QListWidget):
         self.layout().addWidget(svg)
 
     def append_formula_svg(self, formula, svg:bytes):
-        print('append_formula_svg called: ', perf_counter())
 
         item = QListWidgetItem()
         item.setFlags(
@@ -331,9 +328,7 @@ class FormulaList(QListWidget):
         # item.setContentsMargins(0, 5, 0, 5)  #no effect?
         # item.setSizeHint(QSize(0, svg_widget.renderer().defaultSize().height() // 24))
 
-        print('append_formula_svg preparing to addItem: ', perf_counter())
         self.addItem(item)
-        print('append_formula_svg addItem completed:', perf_counter())
         # self.setItemWidget(item, svg_widget)
 
         self.scrollToBottom()
@@ -362,7 +357,6 @@ class FormulaList(QListWidget):
                 var mjelement = document.getElementById('mathjax-container');
                 mjelement.getElementsByTagName('svg')[0].outerHTML;
             """, lambda result: self.update_svg(xml_header + result.encode()))
-        # print('olf svg: ', self.formula_svg)
 
     def update_svg(self, svg:bytes):
         with QMutexLocker(self.formula_queue_mutex):
@@ -380,41 +374,19 @@ class FormulaList(QListWidget):
                 f.write('\[' + formula + '\]\n')
 
     def load_from_text(self, filename):
-        print('opening: ', filename)
         with open(filename, 'rt') as f:
             formula_list = f.read().split('\]\n\[')
-            print('equations: ', len(formula_list))
             if len(formula_list) > 0:
                 formula_list[0] = formula_list[0].removeprefix('\[')
                 formula_list[-1] = formula_list[-1].removesuffix('\]\n')
         for formula in formula_list:
             # FIXME should we clear this first? or do we append to what is currently loaded?
             self.append_formula(formula)
-            print('calling append: ', formula)
 
     def append_formula(self, formula:str):
-        print('XXXX append formulua called')
         if formula:
             self.mj_renderer.submitFormula(formula)
             return
-            with QMutexLocker(self.formula_queue_mutex):
-                print('appending formula: acquiring mutex', formula)
-                # a mutex might be overkill here, since we don't have any explicit threads
-                # so really we should never hang up here waiting for it.
-                print('locked formula_queue_mutex')
-                self.formula_queue.append(formula)
-                if len(self.formula_queue) == 1:
-                    # page loadFinished processing is not guaranteed to complete before a new page
-                    # is called, so we only call setHtml here to kick off the processing if it
-                    # if the formula at this scope is the only one waiting in the queue.  Otherwise
-                    # update_svg will kick off the next one after the previous one is finished
-                    # processing .
-                    html = gen_render_html()
-                    # self.formula_page.setHtml(html.format(formula=formula), QUrl('file://'))
-                    with open('mmout.html', 'wt') as f:
-                        f.write(html)
-                else:
-                    print('formula_queue processing elsewhere, moving on')
 
     # this is the menu structure for building copy methods menus.  It gets fed into build_menu
     copy_menu_struct = (('Preferred Default', copyDefault),
@@ -430,34 +402,6 @@ class FormulaList(QListWidget):
                                                    ('Temp PS File', lambda: None)))
                         )
 
-    '''
-   Default
-Simple Image via Qt
-HTML Fragment (PNG)
-PNG
-Copy to Adobe InDesign
-Effcts>
-More HTML fragments>
-    HTML Fragment (PNG), as text
-    HTML fragment (SVG/PNG)
-    HTML fragment (SVG)
-    HTML fragment (temp. PNG file)
-Specific Formats >
-    PDF
-    PNG
-    EPS
-    LaTeX source
-    OpenOffice Draw
-    GIF via ImageMagick's convert
-    SVG via Inkscape
-    WMV via inkscape
-    EMF via inksape
-    SVG via dvisvgm
-Temporary File >
-    Temp PDF File
-    TEmp PNG File
-    TEMP PS File
-    '''
 
 
     def init_action_dicts(self):
@@ -483,38 +427,6 @@ Temporary File >
 
     def build_copy_menu(self, group:QActionGroup=None, checkable:bool=True):
         return build_menu(self.copy_menu_struct, group, checkable=checkable)
-
-
-
-class FormulaListItem(QListWidgetItem):
-    #def __init__(self, *args, value: typing.Any=None, **kwargs):
-    '''
-    QListWidgetItem(parent: typing.Optional[QListWidget] = None, type: int = QListWidgetItem.Type)
-    QListWidgetItem(text: str, parent: typing.Optional[QListWidget] = None, type: int = QListWidgetItem.Type)
-    QListWidgetItem(icon: QIcon, text: str, parent: typing.Optional[QListWidget] = None, type: int = QListWidgetItem.Type)
-    QListWidgetItem(other: QListWidgetItem)
-    
-    '''
-    @overload
-    def __init__(self, parent: typing.Optional[QListWidget] = None,
-                 type: int = QListWidgetItem.UserType):
-        super().__init__(parent, type)
-    @overload
-    def __init__(self, text: str, parent: typing.Optional[QListWidget] = None,
-                 type: int = QListWidgetItem.UserType):
-        super().__init__(text, parent, type)
-    @overload
-    def __init__(self, icon: QIcon, text: str, parent: typing.Optional[QListWidget] = None,
-                 type: int = QListWidgetItem.Type):
-        super().__init__(icon, text, parent, type)
-
-    @overload
-    def __init__(self, other: QListWidgetItem):
-        super().__init__(other)
-        ...
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
 
 
 
@@ -567,24 +479,18 @@ class FormulaDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option, index):
 
-        print('sizeHint :------------------------------- requested:')
         rec = index.data(Qt.UserRole)
         parent:FormulaList = self.parent()
 
         persistent = QPersistentModelIndex(index)
 
         if parent.state() == QAbstractItemView.EditingState:
-            print('sizeHint: ****state is editing')
             persistent = self.editor_ref.index
             open_index = persistent.model().index(persistent.row(), persistent.column(),
                                                   persistent.parent())
 
         if parent.state() == QAbstractItemView.EditingState and self.editing_index.row() == index.row():
-            print('sizeHint ###################################################: index editing', index)
-            #if parent.isPersistentEditorOpen(index):
-            #    print('state:ZZZZZZPERSISTENT EDITOR OPEN ')
             hint = self.editor_ref.sizeHint()
-            print('returning sizeHint:', hint)
             return hint
         elif rec is not None:
             svg = rec.svg_data
@@ -624,14 +530,12 @@ class FormulaDelegate(QStyledItemDelegate):
         #
         # https://stackoverflow.com/questions/71358160/qt-update-view-size-on-delegate-sizehint-change
 
-        print('createEditor called________________________________________')
         editor = FormulaEdit(parent)
         self.editor_ref = editor
         editor.editingFinished.connect(self.commit_and_close_editor)
 
         persistent = QPersistentModelIndex(index)
         def emitSizeHintChanged():
-            print('emitting sizeHintChanged:')
             index = persistent.model().index(persistent.row(), persistent.column(),
                                              persistent.parent())
             self.sizeHintChanged.emit(index)
@@ -643,7 +547,6 @@ class FormulaDelegate(QStyledItemDelegate):
         # XXThis didn't work, but maybe it could
         index.model().layoutChanged.emit()
         self.parent().scrollTo(index)
-        print('ZZZZZZZZZZZZZZZZZZZz', type(parent))
 
 
         return editor
@@ -654,13 +557,11 @@ class FormulaDelegate(QStyledItemDelegate):
         self.editing_index = index
         self.editing_index_persistent = QPersistentModelIndex(index)
         """ Sets the data to be displayed and edited by our custom editor. """
-        print('setEditorData')
 
         if index:
             formula = index.data() or ''
             editor.input_box.setPlainText(formula)
             # editor.updatePreview() # the above line should generate this signal
-            print('setting editor text')
         else:
             QStyledItemDelegate.setEditorData(self, editor, index)
 
@@ -672,18 +573,15 @@ class FormulaDelegate(QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         """ Get the data from our custom editor and stuffs it into the model.
         """
-        print('setModelData')
 
         # retrieve formula
         formula, svg_data = editor.getFormulaData()
         rec = FormulaData(svg_data, None)
 
-        print('setModelData: setting data')
 
         #editor.input_box.setFocus()
         model.setData(index, editor.formula)
         model.setData(index, rec, Qt.UserRole)
-        print('setModelData: finisehd setting data')
 
         '''
         # retreive and encapsulate SVG data
@@ -712,7 +610,6 @@ class FormulaDelegate(QStyledItemDelegate):
         # process or are received.  maybe we need to verify that they are processed before
         # closeEditor is called.
         # self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
-        print('commit_and_close_editor: emitting closeEditor')
         #self.closeEditor.emit(editor, QStyledItemDelegate.EditNextItem)
         self.currently_editing_item = None
         self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
@@ -720,14 +617,10 @@ class FormulaDelegate(QStyledItemDelegate):
         # QStyledItemDelegate.EditNextItem
 
     def updateEditorGeometry(self, editor, option, index:QModelIndex):
-        print('updateEditorGeometry')
         rect = option.rect;
         sizeHint = editor.sizeHint();
-        print("updateEditorGeometry: editor sizehint", sizeHint)
-        print("updateEditorGeometry: ", sizeHint)
         if (rect.height() < sizeHint.height()):
             rect.setHeight(sizeHint.height())
-            print("updateEditorGeometry: updating rect", sizeHint)
 
         # if (rect.width()<sizeHint.width()) rect.setWidth(sizeHint.width());
         # editor->setGeometry(rect);
@@ -755,7 +648,6 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
     sizeHintChanged = pyqtSignal(QPersistentModelIndex)
 
     def __init__(self, parent=None):
-        print('__________Instantiating new FormulaEdit instance')
         super().__init__(parent)
 
 
@@ -764,7 +656,6 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.formula = None
         self.preview.setPage(self.mj_renderer)
         self.input_box.textChanged.connect(self.updatePreview)
-        print('connecting formula processed handler to formula svg')
         self.mj_renderer.formulaProcessed.connect(self.setFormulaData)
         self.waitPreview = QMutex()
         self.previewUpdated = QWaitCondition()
@@ -796,17 +687,15 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.input_box.setUpdatesEnabled(True)
 
         if self.loop.isRunning():
-            print('setFormulaData: killing loop')
             self.loop.quit()
         else:
-            print('LOOP WAS NOT RUNNING...This should not happen, but it did, so what do we do?')
+            ...
         # self.waitPreview.unlock()
 
     def prepareFormulaData(self):
         # self.setEnabled(False)  # disable editor while processing
         formula = self.input_box.toPlainText()
         self.mj_renderer.submitFormula(formula)
-        print('_______________________prepareFormulaData: submitted Formulua going into event loop')
         # qApp.processEvents()
         #while self.svg_data is None:
         #    #QApplication.processEvents()
@@ -814,11 +703,10 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         #    sleep(0.1)
         if self.svg_data is None:
             if hasattr(self.mj_renderer.handler, 'svg_data'):
-                print('about to loop, handler HAS svg data')
+                ...
             else:
-                print('about to loop, handler has no svg data')
+                ...
             self.loop.exec()
-        print('____________________prepareFormulaData: exiting event loop')
         # self.setEnabled(True)  # disable editor while processing
     def getFormulaData(self):
         return self.formula, self.svg_data
@@ -839,7 +727,6 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                 elif event.modifiers() & Qt.ShiftModifier:
                     return True
             elif event.key() == Qt.Key_Escape:
-                print('editor eventFilter: caught Esc key, passing on for now')
                 return False
 
         return False
@@ -852,11 +739,9 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
         if event.type() == QEvent.KeyPress and obj is self:
 
-            print('editor: XXX got keypress XXXXXXXXXXXXXXXXX')
             if event.key() == Qt.Key_Return and self.input_box.hasFocus():
                 if event.modifiers() & Qt.ControlModifier:
                     # disabling edits while svg renders, should be quick. Might reenable it s/w
-                    print('ZZZZZZZZZZZZZZZZZZz disabling updates')
                     # self.input_box.setUpdatesEnabled(False)
                     self.setEnabled(False)  # disable editor while processing
                     formula = self.input_box.toPlainText()
@@ -871,21 +756,17 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
         if event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Escape:
-                print('ZSSASDFAS: caught Esc key')
                 return True
 
         return super().eventFilter(obj, event)
-        return False
 
     @pyqtSlot()
     def updatePreview(self):
         formula = self.input_box.toPlainText()
-        print('updatePreview: ', formula)
         self.mj_renderer.updatePreview(formula)
 
     @pyqtSlot()
     def on_commit_formula_button_clicked(self):
-        print('___________________commit formula button clicked')
         self.prepareFormulaData()
         self.editingFinished.emit()
 

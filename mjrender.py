@@ -532,18 +532,11 @@ class CallHandler(QObject):
 
     def submitFormula(self, formula):
         self._formula = formula
-        print('ZZ emitting formulaSubmitted: ', formula, perf_counter())
         self.formulaSubmitted.emit(formula)
 
     text = pyqtProperty(str, fget=text, fset=setText, notify=textChanged)
     formula = pyqtProperty(str, fget=formula, fset=setFormula, notify=formulaChanged)
 
-    # I think the pyqtSlot decorator lets you send a return value back to JS.
-    # and JS can call any method on the registered handler/channel.
-    # @pyqtSlot(result=QVariant)
-    # def test(self):
-    #     print('XOXOXOXOXXXXOOXOOX: call received')
-    #     return QVariant({"abc": "def", "ab": 22})
 
     @pyqtSlot(str, str)
     def sendSvg(self, formula, svg):
@@ -552,10 +545,6 @@ class CallHandler(QObject):
         svg_data = xml_header + svg.encode()
         self.svg_data = svg_data
         self.formula = formula
-        print('PY: sendSvg: ')
-        print('PY:', formula)
-        print('PY:', svg)
-        print('PY: sending svgChanged signal: ', formula, perf_counter())
         self.svgChanged.emit(formula, svg_data)
         self.setFormula('')
 
