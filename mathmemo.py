@@ -2,8 +2,10 @@
 import logging, sys, os
 from PyQt5.QtCore import pyqtSlot, QCoreApplication, QSettings, Qt
 
-from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog, QDialogButtonBox,
-                             QFileDialog, QMainWindow, QMenu, QMessageBox, QListWidgetItem)
+from PyQt5.QtWidgets import (QAction, QAbstractItemView, QActionGroup, QApplication, QDialog,
+                             QDialogButtonBox, QFileDialog, QMainWindow, QMenu, QMessageBox,
+                             QListWidgetItem)
+from PyQt5.QtGui import QStandardItem
 from PyQt5.QtWebChannel import QWebChannel
 
 import importlib.resources
@@ -126,16 +128,16 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
 
         #XXX experimental
 
-        self.copy_profile_button.setMenu(self.eq_list.build_copy_menu(group))
-        ###action.triggered.connect(partial(self.eq_list.setCopyDefault, method))
+        self.copy_profile_button.setMenu(self.eq_view.build_copy_menu(group))
+        ###action.triggered.connect(partial(self.eq_view.setCopyDefault, method))
         group.triggered.connect(self.copy_profile_changed)
-        # self.eq_list.itemDoubleClicked.connect(self.editItem)
+        # self.eq_view.itemDoubleClicked.connect(self.editItem)
         ### Experimental
 
         self.channel = QWebChannel()
         # self.mj_renderer = MathJaxRenderer() using a separate page causes svg rendering to break
         # the QWebEnginePage must be associated with a view
-        self.mj_renderer = self.eq_list.mj_renderer
+        self.mj_renderer = self.eq_view.mj_renderer
         # self.preview.setPage(self.mj_renderer)
         # self.channel.registerObject('mj_renderer', self.mj_renderer)
         # self.preview.page().setWebChannel(self.channel)
@@ -149,9 +151,9 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         logging.debug('copy profile changed {}'.format(action.text()))
         method = action.data()
         logging.debug('method: {}'.format(method))
-        self.eq_list.setCopyDefault(method)
-        logging.debug('method: {}'.format(self.eq_list.copyDefault))
-        logging.debug('method cls: {}'.format(self.eq_list.copyDefault.__func__))
+        self.eq_view.setCopyDefault(method)
+        logging.debug('method: {}'.format(self.eq_view.copyDefault))
+        logging.debug('method cls: {}'.format(self.eq_view.copyDefault.__func__))
 
     def show_settings_ui(self):
         response = self.settings_ui.exec_()
@@ -189,7 +191,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         formula_str = self.input_box.toPlainText()
 
         if formula_str:
-            self.eq_list.append_formula(formula_str)
+            self.eq_view.append_formula(formula_str)
             self.input_box.clear()
 
     def _on_load_finished(self):
@@ -203,23 +205,26 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def update_svg(self, svg:bytes):
         # add XML header
         formula = self.eq_queue.pop(0)
-        self.eq_list.append_formula_svg(formula, svg)
+        self.eq_view.append_formula_svg(formula, svg)
 
     @pyqtSlot()
     def on_add_new_button_clicked(self):
-        item = QListWidgetItem()
-        item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
-                      Qt.ItemIsDragEnabled)
-        # item.setHidden(True)
-        self.eq_list.addItem(item)
-        self.eq_list.editItem(item)
-        # editItem doesn't block, so we don't need to delete anything if user abandons the edit
-        # Looks like it needs to be handled in the delegate or editor.
+        # Debounce this: Don't add new when we are editing
+        if self.eq_view.state() != QAbstractItemView.EditingState:
+            #item = QListWidgetItem(parent=self.eq_view)
+            item = QStandardItem()
+            item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
+                          Qt.ItemIsDragEnabled)
+            # item.setHidden(True)
+            self.eq_view.model().appendRow([item])
+            self.eq_view.edit(item.index())
+            # editItem doesn't block, so we don't need to delete anything if user abandons the edit
+            # Looks like it needs to be handled in the delegate or editor.
 
 
     @pyqtSlot()
     def on_copy_button_clicked(self):
-        self.eq_list.copy()
+        self.eq_view.copy()
 
     @pyqtSlot()
     def on_actionAbout_MathMemo_triggered(self):
@@ -237,12 +242,12 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         filename, filter = QFileDialog.getSaveFileName(self, self.tr('Save F:xile'), '', '')
         if filename:
             self.default_filename = filename
-            self.eq_list.save_as_text(filename)
+            self.eq_view.save_as_text(filename)
 
     @pyqtSlot()
     def on_actionSave_triggered(self):
         if self.default_filename:
-            self.eq_list.save_as_text(self.default_filename)
+            self.eq_view.save_as_text(self.default_filename)
         else:
             self.on_actionSave_As_triggered()
 
@@ -251,11 +256,11 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         filename, filter = QFileDialog.getOpenFileName(self, self.tr('Open F:xile'), '', '')
         if filename:
             self.default_filename = filename
-            self.eq_list.load_from_text(filename)
+            self.eq_view.load_from_text(filename)
 
     @pyqtSlot()
     def on_actionQuit_triggered(self):
-        if self.eq_list.isWindowModified() or True:
+        if self.eq_view.isWindowModified() or True:
             quit_dialog = QMessageBox()
             quit_dialog.setText("You have unsaved formulas.")
             quit_dialog.setInformativeText(

@@ -149,11 +149,8 @@
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
-         <property name="plainText">
-          <string>Enter a formula here..., Ctrl+Enter to commit.</string>
-         </property>
          <property name="placeholderText">
-          <string>Enter a formula here...</string>
+          <string>Enter a formula here..., press Ctrl+Enter to commit.</string>
          </property>
         </widget>
        </item>
