@@ -434,10 +434,14 @@ class FormulaDelegate(QStyledItemDelegate):
 
             vpad = settings.value("display/verticalPadding", 200, type=int)
 
-            self.renderer.load(svg.replace(b'currentColor', draw_color.name().encode()))
+            # this replace is dependent on the svg format.  Maybe we should transform it
+            # at the soruce so we can adjust it easily with bytes.format.
+            self.renderer.load(svg.replace(b'rgb(0%, 0%, 0%)', draw_color.name().encode()))
             self.renderer.setAspectRatioMode(Qt.KeepAspectRatio)
-            self.renderer.setViewBox(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad))
-
+            height =  self.renderer.viewBox().height()
+            vpad = int(height * 0.1) # don't like this as a percent..
+            self.renderer.viewBox().adjusted(0, -vpad, 0, vpad)
+            self.renderer.setViewBox(QRectF(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad)))
             painter.save()
             self.renderer.render(painter, QRectF(option.rect))
             painter.restore()
@@ -495,11 +499,12 @@ class FormulaDelegate(QStyledItemDelegate):
             vpad = settings.value("display/verticalPadding", 200, type=int)
             rfactor = settings.value("display/reductionFactor", 24, type=float)
 
-            self.renderer.setViewBox(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad))
+            ####self.renderer.setViewBox(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad))
 
             if self.renderer:
                 logging.debug('delegate: basing size on renderer')
-                hint = self.renderer.defaultSize() / rfactor
+                ###hint = self.renderer.defaultSize() / rfactor
+                hint = self.renderer.defaultSize() * 3 #
             else:
                 hint = QStyledItemDelegate.sizeHint(self, option, index)
 
@@ -511,6 +516,7 @@ class FormulaDelegate(QStyledItemDelegate):
             logging.debug('delegate: formula = {}'.format(data))
             logging.debug('delegate sizeHint: {}'.format(hint))
             # look at renderer.defaultSize
+
             if option.state & QStyle.State_Selected:
                 return hint * 2
             else:

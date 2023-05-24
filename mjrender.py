@@ -3,6 +3,7 @@ from PyQt5.QtWebEngineWidgets import QWebEnginePage
 from PyQt5.QtWebChannel import QWebChannel
 from io import BytesIO
 import matplotlib.pyplot as plt
+from cairosvg import svg2svg
 
 settings = QSettings()
 
@@ -538,6 +539,8 @@ class CallHandler(QObject):
         # called by JS, receives items and sends signal to listener.
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
         svg_data = xml_header + svg.encode()
+        svg_data = svg2svg(svg_data)
+        print(svg_data.decode())
         self.svg_data = svg_data
         self.formula = formula
         self.svgChanged.emit(formula, svg_data)
