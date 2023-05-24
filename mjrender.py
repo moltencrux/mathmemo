@@ -1,17 +1,19 @@
-from PyQt5.QtCore import pyqtProperty, pyqtSignal, pyqtSlot, QObject, QSettings, QUrl
-from PyQt5.QtWebEngineWidgets import QWebEnginePage
+
+from PyQt5.QtCore import (pyqtProperty, pyqtSignal, pyqtSlot, QEventLoop, QObject, QSettings, Qt,
+                          QUrl)
+from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView
 from PyQt5.QtWebChannel import QWebChannel
+from PyQt5.QtWidgets import qApp
+from cairosvg import svg2svg
 from io import BytesIO
 import matplotlib.pyplot as plt
 from cairosvg import svg2svg
 
 settings = QSettings()
 
-context = r'''\newcommand{\Ex}{\mathop{\rm Ex}}
-               \newcommand{\T}{\mathop{\rm T}}
-               \newcommand{\range}{\mathop{\rm range}}
-           '''.replace('{', '{{').replace('}', '}}')
 
+context = r'''
+           '''.replace('{', '{{').replace('}', '}}')
 
 mathjax_v2_url = "file:///usr/share/javascript/mathjax/MathJax.js?delayStartupUntil=onload"
 
@@ -175,9 +177,28 @@ mathjax_v3_config = r"""
     },
     tex: {packages: {'[+]': ['noerrors', 'ams', 'noundefined', 'mathtools']},
       macros: {
-        RR: "{\\\\bf R}",
-        bold: ["{\\\\bf #1}", 1]
-      }
+        RR: "{\\bf R}",
+        Ex: "{\\operatorname {Ex}}",
+        Var: "{\\operatorname {Var}}",
+        T: "{\\operatorname {T}}",
+        range: "{\\operatorname {range}}",
+        bold: ["{\\bf #1}", 1]
+      },
+      svg: {
+        scale: 1,                      // global scaling factor for all expressions
+        minScale: .5,                  // smallest scaling factor to use
+        mtextInheritFont: false,       // true to make mtext elements use surrounding font
+        merrorInheritFont: true,       // true to make merror text use surrounding font
+        mathmlSpacing: false,          // true for MathML spacing rules, false for TeX rules
+        skipAttributes: {},            // RFDa and other attributes NOT to copy to the output
+        exFactor: .5,                  // default size of ex in em units
+        displayAlign: 'center',        // default for indentalign when set to 'auto'
+        displayIndent: '0',            // default for indentshift when set to 'auto'
+        fontCache: 'none',             // or 'global' or 'none'
+        localID: null,                 // ID to use for local font cache (for single equation processing)
+        internalSpeechTitles: true,    // insert <title> tags with speech content
+        titleID: 0                     // initial id number to use for aria-labeledby titles
+      } 
     },
     
     startup: {
@@ -538,8 +559,7 @@ class CallHandler(QObject):
     def sendSvg(self, formula, svg):
         # called by JS, receives items and sends signal to listener.
         xml_header = b'<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        svg_data = xml_header + svg.encode()
-        svg_data = svg2svg(svg_data)
+        svg_data = svg2svg(xml_header + svg.encode())
         print(svg_data.decode())
         self.svg_data = svg_data
         self.formula = formula
@@ -574,3 +594,27 @@ class MathJaxRenderer(QWebEnginePage):
 
     def updatePreview(self, formula):
         self.handler.setFormula(formula)
+
+
+
+class WebSvgRendererX(QWebEngineView):
+    def __init__(self):
+        super().__init__()
+        self.setAttribute(Qt.WA_DontShowOnScreen, True)
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.loadFinished.connect(self._on_load_finished)
+        self.loop = QEventLoop(qApp)
+
+    def loadSvg(self, svg_data):
+
+        self.processing = True
+        self.setHtml(svg_data, QUrl('file://'))
+
+        if self.processing:
+            self.loop.exec()
+
+    def _on_load_finished(self):
+        if self.processing and self.loop.isRunning():
+            self.loop.quit()
+        else:
+            print('not in event loop, didnt expect this')

@@ -22,6 +22,7 @@ from collections import namedtuple
 
 from io import BytesIO
 
+# Move this to a modular debugging kit for PyQT.  Is there anything prebuilt that does this?
 event_dict = {getattr(QEvent, v):v for v in dir(QEvent) if isinstance(getattr(QEvent, v), QEvent.Type)}
 
 class CopyProfile(StrEnum):
@@ -121,7 +122,7 @@ class FormulaView(QListView):
     def listContextMenuRequested(self, pos):
         # pos = self.mapFromGlobal(QCursor.pos()) # I don't think this is necessary now
         row = self.indexAt(pos).row()
-        if row < 0 and not self.selectedItems():
+        if row < 0 and not self.selectedIndexes():
             index_items_enabled = False
         else:
             index_items_enabled = True
@@ -176,9 +177,9 @@ class FormulaView(QListView):
             ...
 
     @register
-    def copySvgText(self, index):
+    def copySvgText(self, row):
 
-        item = self.item(index)
+        item = self.model().item(row)
         rec = item.data(Qt.UserRole)
         svg = rec.svg_data
         qApp.clipboard().setText(svg.decode())
@@ -263,7 +264,7 @@ class FormulaView(QListView):
     def deleteEquation(self, index):
         # self.formulas.pop(index)
         # self.images.pop(index)
-        self.takeItem(index)
+        self.model().removeRow(index)
 
     def append_formula_svg_matplotlib(self, formula):
         # self.formulas.append(formula)
@@ -396,7 +397,6 @@ class FormulaDelegate(QStyledItemDelegate):
         self.index_editor_dict = {}
         self.renderer = QSvgRenderer()
         self.editor_ref = None
-        self.editor_sizeHint = QSize(0,0)
         self.editing_index = None
         self.closeEditor.connect(self.close_editor)
 
@@ -405,9 +405,7 @@ class FormulaDelegate(QStyledItemDelegate):
         # model.layoutChanged.emit()
         # if parent.state() == QAbstractItemView.EditingState and self.editing_index.row() == index.row():
         if option.state & QStyle.State_Editing:
-            print('/////////////////////////////////////////////////////')
             print('paint: called, State_Editing')
-            print('/////////////////////////////////////////////////////')
             model = index.model()
             #XXXmodel.layoutChanged.emit()
             # self.sizeHintChanged.emit(index)
@@ -478,18 +476,14 @@ class FormulaDelegate(QStyledItemDelegate):
         
         rec = index.data(Qt.UserRole)
         parent:FormulaView = self.parent()
-        persistent = QPersistentModelIndex(index)
+        pindex = QPersistentModelIndex(index)
 
-        #if parent.state() == QAbstractItemView.EditingState:
+        # if parent.state() == QAbstractItemView.EditingState:
 
-        #if option.state & QStyle.State_Editing:
+        # if option.state & QStyle.State_Editing: # <- this does not proerply detect an item edit
         if self.is_being_edited(index):
-            #editor = self.index_editor_dict
-            persistent = QPersistentModelIndex(index)
             editor = self.get_editor_from_index(index)
             hint = editor.sizeHint()
-
-            #return QSize(500, 500)
             return hint
         elif rec is not None:
             svg = rec.svg_data
@@ -517,16 +511,16 @@ class FormulaDelegate(QStyledItemDelegate):
             logging.debug('delegate sizeHint: {}'.format(hint))
             # look at renderer.defaultSize
 
-            if option.state & QStyle.State_Selected:
-                return hint * 2
-            else:
-                return hint
+            # if option.state & QStyle.State_Selected: # is this check broken too?
+            return hint
         else:
             try:
                 editor = self.get_editor_from_index(index)
                 hint = editor.sizeHint()
                 return hint
             except:
+                # This seems to be happening when we first insert items, so it's probably not
+                # an exceptional condition. Just need a sizeHint for a new empty item.
                 hint = QSize(500, 900)
                 return hint
             #return super().sizeHint(option, index)
@@ -549,22 +543,20 @@ class FormulaDelegate(QStyledItemDelegate):
         #if not option.state & QStyle.State_Editing:
 
         model = index.model()
-
         editor = FormulaEdit(parent)
         self.associate_editor_index(editor, index)
         editor.editingFinished.connect(self.commit_and_close_editor)
         editor.editingAborted.connect(self.abort_and_close_editor)
-
-
         pindex = QPersistentModelIndex(index)
+
         def emitSizeHintChanged():
             print('emitSizeChanged:')
             index = pindex.model().index(pindex.row(), pindex.column(), pindex.parent())
             self.sizeHintChanged.emit(index)
+
         editor.sizeHintChanged.connect(emitSizeHintChanged)
         editor.updateIndexThing(QPersistentModelIndex(index))
         self.sizeHintChanged.emit(index)
-        self.editor_sizeHint = editor.sizeHint()
         # XXThis didn't work, but maybe it could
         model.layoutChanged.emit()
         self.parent().scrollTo(index)
@@ -653,16 +645,20 @@ class FormulaDelegate(QStyledItemDelegate):
     def eventFilter(self, editor, event: QEvent):
         if event.type() == event.LayoutRequest:
 
-            persistent = editor.index
-            index = persistent.model().index(persistent.row(), persistent.column(),
-                                             persistent.parent())
+            pindex = self.get_index_from_editor(editor)
+            index = pindex.model().index(pindex.row(), pindex.column(), pindex.parent())
             self.sizeHintChanged.emit(index)
 
         elif event.type() == QEvent.KeyPress:  # and obj is self:
 
             if event.key() == Qt.Key_Escape:
                 index = self.get_index_from_editor(editor)
-                self.closeEditor.emit(editor, QStyledItemDelegate.NoHint) # method of delegate
+                if index:
+                    self.closeEditor.emit(editor, QStyledItemDelegate.NoHint) # method of delegate
+                else:
+                    pass
+            elif event.key() == Qt.Key_Delete and event.modifiers() & Qt.ControlModifier:
+                ...
 
         # This doesn't work quite right, maybe do it in the editor eventFilter?
         # elif event.type() == QEvent.FocusOut:  # must be some other event
@@ -812,3 +808,4 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
     @pyqtSlot()
     def on_discard_button_clicked(self):
         self.editingAborted.emit()
+
