@@ -5,38 +5,40 @@ Project Description
 ### Feature Wishlist
 - [ ] Settings for image dimensions/resolution
 - [ ] Default rendering colors
-- [ ] Save settings
-- [ ] double click to edit
-- [ ] edit already committed formulas
 - [ ] drag & drop to rearrange
+- [ ] autocompletion with candidate guessing/parsing
+- [ ] edit history
+- [ ] undo delete
+- [ ] Toggle automatic block mode on the editor.
+  - to do this properly may require being able to render from the QWebEngineView
 
 ### To Fix
-
-- [ ] Edit preivous "committed" messsages
-
+- [ ] Preview scaling
+- [ ] formula item scaling
+- [ ] strangeness with appending 
+- [ ] flickering on entry editor
+- [ ] formula became big, size hint incorrect for blank formulas
+  - seems to be only whitespace in a formula
+- [ ] blank formulas being inserted somehow
+- 
 ### Brainstorm Ideas
 
 - [ ] block mode vs inline
-- [ ] do we want to access the html? I'm not inclined to make this the default mode of operation.
 
 - [ ] Optional vim bindings, maybe using fakevim
 - [ ] LaTeX/Mathjax syntax highlighting
 - [ ] Syntax completion
   - [ ] push one of the closing objets such as \right) ahead of the cursor.  we may not know the order, but when it gets typed, we can pull it out of the 'stack' ahead of the cursor. maybe offer it as a suggestion to complete as typing occurs in a pulldown thing
-  - [ ] bad syntax delay/completeion record last good syntax and maybe don't process open {^_ until closed.  or maybe process it separately. maybe close it tenatively.  sth like a \dfrac could get two advanced {} ahead of it.  \dfrac... {} ...{}.  Hit tab/return to close it.
+  - [ ] bad syntax delay/completion record last good syntax and maybe don't process open {^_ until closed.  or maybe process it separately. maybe close it tenatively.  sth like a \dfrac could get two advanced {} ahead of it.  \dfrac... {} ...{}.  Hit tab/return to close it.
   - [ ] maybe add some kind of empty box after ^ and _ to indicate what is expected
-- [ ] history
 - [ ] save preferences/export colors/geometry
 - [ ] toolbar for copy type shortcuts
 - [ ] theming stuff / follow default theme / appropriate icon colors
-- [ ] tabbed interface - multiple session 
+ - [ ] tabbed interface - multiple session 
 - [ ] merge equations
 - [ ] wizard for creating matrices or other elements
 - [ ] collapse text elements between {}
-- [ ] edit history
-- [ ] autocompletion with candidate guessing
 - [ ] macros / hot keys
-- [ ] hide preview window when empty
 
 - [ ] how do we tell if mathjax gave an error? .. one is yellow bg.
 - [ ] drag equations between tabs/windows or within list position
@@ -81,7 +83,6 @@ Project Description
   - so do we use QAction instances to construct the menus? (currently done in init_action_dicts)
     - maybe setData to refer to the method & use that as an index
     - why not 'connect?', we need to associate it somehow.  before we iterated to check
-- [ ] drag & drop reordering items makes items go blank, may need redrawing
 
 - ### Completed Column ✓
 - [x] can copy image to clipboard and paste in an IM
@@ -90,3 +91,11 @@ Project Description
 - [x] save a session
 - [x] scrolling IM style widget 
 - [x] scale down image in display as it gets larger
+- [x] double click to edit
+- [x] hide preview window when empty (this comes with custome delgate)
+- [x] edit already committed formulas
+- [x] Save settings
+- 
+### Fixed
+- [x] editor closing when losing focus 
+- [x] Append new blank item and edit it after commit if it's the last item.

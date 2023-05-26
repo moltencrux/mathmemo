@@ -211,13 +211,8 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def on_add_new_button_clicked(self):
         # Debounce this: Don't add new when we are editing
         if self.eq_view.state() != QAbstractItemView.EditingState:
-            #item = QListWidgetItem(parent=self.eq_view)
-            item = QStandardItem()
-            item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
-                          Qt.ItemIsDragEnabled)
-            # item.setHidden(True)
-            self.eq_view.model().appendRow([item])
-            self.eq_view.edit(item.index())
+            self.eq_view.append_new()
+
             # editItem doesn't block, so we don't need to delete anything if user abandons the edit
             # Looks like it needs to be handled in the delegate or editor.
 
