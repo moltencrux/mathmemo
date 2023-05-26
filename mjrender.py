@@ -8,7 +8,8 @@ from cairosvg import svg2svg
 from io import BytesIO
 import matplotlib.pyplot as plt
 from cairosvg import svg2svg
-
+####  WA_DontShowOnScreen...  see if this can fix the issue that was causing mathjax not to render
+#### when the QWebEnginePage was not being shown in a view.
 settings = QSettings()
 
 
@@ -181,6 +182,7 @@ mathjax_v3_config = r"""
         Ex: "{\\operatorname {Ex}}",
         Var: "{\\operatorname {Var}}",
         T: "{\\operatorname {T}}",
+        H: "{\\operatorname {H}}",
         range: "{\\operatorname {range}}",
         bold: ["{\\bf #1}", 1]
       },
@@ -320,7 +322,7 @@ mj_v3_scripts = r"""
         var math = MathJax.tex2svg(text);  
         var math_svg = math.getElementsByTagName('svg')[0];
         console.error('updateText called: ' + text);
-        console.error(typeof math_svg);
+        console.error(typeof math_svg)    #@pyqtSlot(QWidget, QAbstractItemDelegate.EndEditHint);
         console.error(math_svg);
         window.handler.sendSvg(text, math_svg.outerHTML);
     };
@@ -580,6 +582,11 @@ class MathJaxRenderer(QWebEnginePage):
         self.setHtml(gen_render_html(), QUrl('file://'))
         self.loadFinished.connect(self._on_load_finished)
         self.handler.svgChanged.connect(self.formulaProcessed.emit)
+        # I was thinking this might be something that would fix the MJ2 problems.
+        # but actually I couldn't get the problem to manifest so far in this version.
+        # and the QWebEnginePage doesn't have a setAttribute method
+        ###self.settings().setAttribute(Qt.WA_DontShowOnScreen, True)
+        ###self.settings().setAttribute(Qt.WA_DeleteOnClose, True)
 
     def _on_load_finished(self):
         self.handler.updateFormula()

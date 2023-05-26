@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (qApp, QAbstractItemDelegate, QAction, QActionGroup,
 from PyQt5.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent, QEventLoop, Qt,
                           QMimeData, QMutex, QMutexLocker, QObject, QPoint, QRectF, QSettings,
                           QSize, QTemporaryFile, QUrl, QWaitCondition, QPersistentModelIndex,
-                          QModelIndex)
+                          QModelIndex, QVariant)
 from PyQt5.QtGui import QPalette, QImage, QPainter, QColor, QStandardItem, QStandardItemModel
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
@@ -101,6 +101,14 @@ class FormulaView(QListView):
         self.mj_renderer.formulaProcessed.connect(self.append_formula_svg)
 
 
+    def append_new(self):
+        item = QStandardItem()
+        item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
+                      Qt.ItemIsDragEnabled)
+        # item.setHidden(True)
+        self.model().appendRow([item])
+        self.edit(item.index())
+
     @classmethod
     def setSettings(cls, settings:QSettings):
         # maybe totally unecessary
@@ -155,9 +163,9 @@ class FormulaView(QListView):
         logging.debug("Context action {} performed on: {}".format(selection, row))
 
     @register
-    def copySvg(self, index):
+    def copySvg(self, row):
 
-        item = self.item(index)
+        item = self.model().item(row)
         rec = item.data(Qt.UserRole)
         svg = rec.svg_data
 
@@ -186,20 +194,20 @@ class FormulaView(QListView):
 
 
     @register
-    def copyImage(self, index):
+    def copyImage(self, row):
 
-        image = self.genPngByIndex(index)
+        image = self.genPngByRow(row)
         self.clipboard.setImage(image)
-        logging.debug(f'copyImage called {index}')
+        logging.debug(f'copyImage called {row}')
 
-    def genPngByIndex(self, index):
+    def genPngByRow(self, row):
 
         rfactor = settings.value("copyImage/reductionFactor", 12.0, type=float)
         # eventually i want to make this a more intutive setting, something related to
         # dpi  # i think a ratio of 12 may be very close to 600dpi
         # so then a ratio of 6 would be 1200 dpi, 24 would be 300, 48: 150
 
-        item = self.item(index)
+        item = self.model().item(row)
         rec = item.data(Qt.UserRole)
         svg = rec.svg_data
 
@@ -215,9 +223,9 @@ class FormulaView(QListView):
         return image
 
     @register
-    def copyImageTmp(self, index):
-        image = self.genPngByIndex(index)
+    def copyImageTmp(self, row):
 
+        image = self.genPngByRow(row)
         tmp_imgfile = QTemporaryFile(os.path.join(QDir.tempPath(), 'XXXXXXXX.png'))
         self.tempfiles.append(tmp_imgfile)
         image.save(tmp_imgfile)
@@ -232,13 +240,11 @@ class FormulaView(QListView):
 
 
     @register
-    def copyEquation(self, index):
+    def copyEquation(self, row):
 
-        item = self.item(index)
+        item = self.model().item(row)
         formula = item.text()
-
         qApp.clipboard().setText(formula)
-
         logging.debug(f'copyEquation called {formula}')
 
     # setting class default copy behavior
@@ -473,7 +479,9 @@ class FormulaDelegate(QStyledItemDelegate):
         # this may do nothing. I think this was attempting to get the
         # QStyle.State_Editing flag set the way I expected it.
         self.initStyleOption(option, index)
-        
+        base_hint = super().sizeHint(option, index)
+        viewport_hint = self.parent().maximumViewportSize()
+
         rec = index.data(Qt.UserRole)
         parent:FormulaView = self.parent()
         pindex = QPersistentModelIndex(index)
@@ -498,7 +506,15 @@ class FormulaDelegate(QStyledItemDelegate):
             if self.renderer:
                 logging.debug('delegate: basing size on renderer')
                 ###hint = self.renderer.defaultSize() / rfactor
-                hint = self.renderer.defaultSize() * 3 #
+                hint = self.renderer.defaultSize() * 4 #
+                # this almost works.. maybe subtract a little
+                print('sizeHint: base_hint', base_hint)
+                print('sizeHint: hint (original):', hint)
+                if hint.width() > viewport_hint.width():
+                    hint = hint * (viewport_hint.width() / hint.width())
+                print('sizeHint: hint (modified):', hint)
+                #hint.setWidth(base_hint.width())
+                # something is goign on.. maybe it doesn't always work
             else:
                 hint = QStyledItemDelegate.sizeHint(self, option, index)
 
@@ -600,12 +616,18 @@ class FormulaDelegate(QStyledItemDelegate):
         """ Commits the data and closes the editor. """
         editor = self.sender()
 
+        index = self.get_index_from_editor(editor)
+
         # The commitData signal must be emitted when we've finished editing
         # and need to write our changed back to the model.
         self.commitData.emit(editor)
-        self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
-
+        if index.row() == index.model().rowCount() - 1:
+            # append a new item and edit it if we're on the last row
+            self.parent().append_new()
+            self.closeEditor.emit(editor, QStyledItemDelegate.EditNextItem)
+        else:
+            self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
     #def editorEvent(self, event: QtCore.QEvent, model: QtCore.QAbstractItemModel, option: 'QStyleOptionViewItem', index: QtCore.QModelIndex) -> bool:
 
@@ -667,6 +689,11 @@ class FormulaDelegate(QStyledItemDelegate):
         #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint) # method of delegate
         #     return True
 
+        # Trying to prevent editor close on losing focus
+        elif event.type() in {QEvent.FocusAboutToChange, QEvent.FocusOut}:
+            print('FocusAboutToChange/FocusOut')
+            return True
+
         return super().eventFilter(editor, event)
 
 
@@ -688,7 +715,7 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.initUI()
         self.svg_data = None
         self.formula = None
-        self.preview.setPage(self.mj_renderer)
+        ###self.preview.setPage(self.mj_renderer)
         self.input_box.textChanged.connect(self.updatePreview)
         self.mj_renderer.formulaProcessed.connect(self.setFormulaData)
         self.waitPreview = QMutex()
