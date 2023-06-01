@@ -99,7 +99,21 @@ class FormulaView(QListView):
 
         self.mj_renderer = MathJaxRenderer()
         self.mj_renderer.formulaProcessed.connect(self.append_formula_svg)
+        self.installEventFilter(self)
 
+
+    def eventFilter(self, object: QObject, event: QEvent) -> bool:
+        ...
+
+        if event.type() == QEvent.KeyPress:  # and obj is self:
+
+            if event.key() == Qt.Key_Delete and event.modifiers() & Qt.ControlModifier:
+                for index in self.selectedIndexes():
+                    self.deleteEquation(index.row())
+
+                return True
+
+        return False
 
     def closeEditor(self, editor: QWidget, hint: QAbstractItemDelegate.EndEditHint) -> None:
         if not editor.delegate_processed:
@@ -274,10 +288,10 @@ class FormulaView(QListView):
         cls.copyDefault = method
 
     @register
-    def deleteEquation(self, index):
+    def deleteEquation(self, row):
         # self.formulas.pop(index)
         # self.images.pop(index)
-        self.model().removeRow(index)
+        self.model().removeRow(row)
 
     def append_formula_svg_matplotlib(self, formula):
         # self.formulas.append(formula)
@@ -692,11 +706,8 @@ class FormulaDelegate(QStyledItemDelegate):
             if event.key() == Qt.Key_Escape:
                 index = self.get_index_from_editor(editor)
                 if index:
-                    self.closeEditor.emit(editor, QStyledItemDelegate.NoHint) # method of delegate
-                else:
-                    pass
-            elif event.key() == Qt.Key_Delete and event.modifiers() & Qt.ControlModifier:
-                ...
+                    self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)  # method of delegate
+                    return True
 
         # This doesn't work quite right, maybe do it in the editor eventFilter?
         # elif event.type() == QEvent.FocusOut:  # must be some other event
