@@ -181,9 +181,13 @@ mathjax_v3_config = r"""
         RR: "{\\bf R}",
         Ex: "{\\operatorname {Ex}}",
         Var: "{\\operatorname {Var}}",
-        T: "{\\operatorname {T}}",
-        H: "{\\operatorname {H}}",
+        Cov: "{\\operatorname {Cov}}",
+        T: "{\\mathsf{T}}",
+        H: "{\\mathsf{H}}",
         range: "{\\operatorname {range}}",
+        sech: "{\\operatorname {sech}}",
+        csch: "{\\operatorname {csch}}",
+        mangle: "{\\operatorname {m}\\angle}",
         bold: ["{\\bf #1}", 1]
       },
       svg: {
@@ -572,10 +576,10 @@ class CallHandler(QObject):
 class MathJaxRenderer(QWebEnginePage):
     formulaProcessed = pyqtSignal(str, bytes)
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self._text = ""
-        self.channel = QWebChannel()
+        self.channel = QWebChannel(self)
         self.setWebChannel(self.channel)
         self.handler = CallHandler()
         self.channel.registerObject('handler', self.handler)

@@ -211,7 +211,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     def on_add_new_button_clicked(self):
         # Debounce this: Don't add new when we are editing
         if self.eq_view.state() != QAbstractItemView.EditingState:
-            self.eq_view.append_new()
+            self.eq_view.append_new_and_edit()
 
             # editItem doesn't block, so we don't need to delete anything if user abandons the edit
             # Looks like it needs to be handled in the delegate or editor.

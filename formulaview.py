@@ -97,7 +97,7 @@ class FormulaView(QListView):
         self.setAcceptDrops(True)
         self.setDefaultDropAction(Qt.MoveAction)
 
-        self.mj_renderer = MathJaxRenderer()
+        self.mj_renderer = MathJaxRenderer(self)
         self.mj_renderer.formulaProcessed.connect(self.append_formula_svg)
         self.installEventFilter(self)
 
@@ -122,13 +122,20 @@ class FormulaView(QListView):
         else:
             return super().closeEditor(editor, hint)
 
+    def append_new_and_edit(self):
+        index:QModelIndex = self.append_new()
+        self.setCurrentIndex(index)
+        self.edit(index)
+
     def append_new(self):
         item = QStandardItem()
         item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
                       Qt.ItemIsDragEnabled)
         # item.setHidden(True)
         self.model().appendRow([item])
-        self.edit(item.index())
+        index = item.index()
+
+        return index
 
     @classmethod
     def setSettings(cls, settings:QSettings):
@@ -651,13 +658,13 @@ class FormulaDelegate(QStyledItemDelegate):
 
         # The commitData signal must be emitted when we've finished editing
         # and need to write our changed back to the model.
-        self.commitData.emit(editor)
-
         if index.row() == index.model().rowCount() - 1:
             # append a new item and edit it if we're on the last row
             self.parent().append_new()
+            self.commitData.emit(editor)
             self.closeEditor.emit(editor, QStyledItemDelegate.EditNextItem)
         else:
+            self.commitData.emit(editor)
             self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
     #def editorEvent(self, event: QtCore.QEvent, model: QtCore.QAbstractItemModel, option: 'QStyleOptionViewItem', index: QtCore.QModelIndex) -> bool:
@@ -677,11 +684,12 @@ class FormulaDelegate(QStyledItemDelegate):
             # why would index be a none here? maybe it got called after disassociating?
 
             self.disassociate_editor_index(editor, index)
-            model.layoutChanged.emit()
             if model.rowCount() == index.row() + 1 and index.data() is None:
                 model.removeRow(index.row())
             else:
                 self.sizeHintChanged.emit(index)
+
+            model.layoutChanged.emit()
         else:
             print('###########################################')
             print('close_editor: index is none')
@@ -758,7 +766,7 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
     def initUI(self):
         self.setupUi(self)
-        self.mj_renderer = MathJaxRenderer()
+        self.mj_renderer = MathJaxRenderer(self)
         #self.mj_renderer.formulaProcessed.connect(X)
         self.preview.setPage(self.mj_renderer)
         self.input_box.setFocus()
@@ -774,7 +782,7 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.formula = formula
         self.svg_data = svg_data
         print('setFormulaData: formula data updating')
-        self.input_box.setUpdatesEnabled(True)
+        # self.input_box.setUpdatesEnabled(True)
 
         if self.loop.isRunning():
             self.loop.quit()
@@ -825,8 +833,8 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         #     self.editingAborted.emit()
         #     return True
 
-    # return False
-        return super().eventFilter(obj, event)
+        return False
+        # return super().eventFilter(obj, event)
 
     def size_hint_inc(self):
         if not hasattr(self, 'size_hint_override'):
