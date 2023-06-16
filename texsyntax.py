@@ -3,12 +3,22 @@
 import sys
 
 # from PySide2 import QtCore, QtGui, QtWidgets
-from PyQt5.QtGui import QSyntaxHighlighter, QTextDocument, QTextCharFormat, QColor, QFont
+from PyQt5.QtGui import (QSyntaxHighlighter, QTextBlock, QTextDocument, QTextCharFormat, QColor,
+                         QFont)
 from PyQt5.QtCore import QRegExp
+from mjparse import mathjax_grammar_def
 
-def format(color, style=''):
-    """Return a QTextCharFormat with the given attributes.
-    """
+from parsimonious.grammar import Grammar
+from parsimonious.nodes import NodeVisitor, Node
+from parsimonious.exceptions import (ParseError, IncompleteParseError, VisitationError, UndefinedLabel, BadGrammar)
+
+
+
+
+def format(color, style='', background='', underline_style=QTextCharFormat.NoUnderline,
+           underline_color=''):
+    """Return a QTextCharFormat with the given attributes."""
+
     _color = QColor()
     _color.setNamedColor(color)
 
@@ -43,10 +53,14 @@ STYLES = {
     'self': format('black', 'italic'),
 
     'brace': format('cyan'),
-    'group' : format('magenta'),
+    'group': format('magenta'),
+    'superscript': format('magenta'),
+    'subscript': format('magenta'),
     'numbers': format('darkcyan'),
-    'variables': format('cyan'),
+    'digit': format('darkcyan'),
+    'variable': format('cyan'),
     'operator': format('red'),
+    'command': format('red'),
     'supersub': format('red'),
     'comment': format('darkGray', 'italic'),
 }
@@ -80,12 +94,14 @@ class LatexHighlighter (QSyntaxHighlighter):
 
 
     operators = [
-        r'\\[A-Za-z]+',
+        #r'\\[A-Za-z]+',
+        #r'\\ZZZZZZZZ[A-Za-z]+',
     ]
 
     variables = [
-        r'[^\\0-9A-Za-z]([A-Za-z]+)',
-        r'^([A-Za-z]+)',
+        #r'[^\\0-9A-Za-z]([A-Za-z]+)',
+        #r'^([A-Za-z]+)',
+        #r'\\ZZZZZZZZ[A-Za-z]+',
         #r'[A-Za-z]+',
     ]
 
@@ -108,6 +124,7 @@ class LatexHighlighter (QSyntaxHighlighter):
 
     def __init__(self, parent: QTextDocument) -> None:
         super().__init__(parent)
+        self.visitor = MathJaxHightlightVisitor(self)
 
         # Multi-line strings (expression, flag, style)
         self.tri_single = (QRegExp("'''"), 1, STYLES['string2'])
@@ -124,14 +141,14 @@ class LatexHighlighter (QSyntaxHighlighter):
             for b in LatexHighlighter.braces]
         rules += [(r'%s' % s, 0, STYLES['supersub'])
                   for s in LatexHighlighter.supersub]
-        rules += [(r'%s' % v, 1, STYLES['variables'])
+        rules += [(r'%s' % v, 1, STYLES['variable'])
                   for v in LatexHighlighter.variables]
 
         # All other rules
         rules += [
             # Numeric literals
-            (r'[0-9]*\.[0-9]+', 0, STYLES['numbers']),
-            (r'[0-9]+', 0, STYLES['numbers']),
+            # (r'[0-9]*\.[0-9]+', 0, STYLES['numbers']),
+            # (r'[0-9]+', 0, STYLES['numbers']),
             #(r'\b[+-]?[0-9]+[lL]?\b', 0, STYLES['numbers']),
             #(r'\b[+-]?0[xX][0-9A-Fa-f]+[lL]?\b', 0, STYLES['numbers']),
             #(r'\b[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b', 0, STYLES['numbers']),
@@ -171,67 +188,163 @@ class LatexHighlighter (QSyntaxHighlighter):
     def highlightBlock(self, text):
         """Apply syntax highlighting to the given block of text.
         """
-        self.tripleQuoutesWithinStrings = []
-        # Do other syntax formatting
-        for expression, nth, format in self.rules:
-            index = expression.indexIn(text, 0)
 
-            if expression.pattern() == r'(?!\\)[A-Za-z]+':
-                ...
-            while index >= 0:
-
-                # We actually want the index of the nth match
-                index = expression.pos(nth)
-                length = len(expression.cap(nth))
-                self.setFormat(index, length, format)
-                index = expression.indexIn(text, index + length)
-
-        self.setCurrentBlockState(0)
-
-        # Do multi-line strings
-        #in_multiline = self.match_multiline(text, *self.tri_single)
-        #if not in_multiline:
-            #in_multiline = self.match_multiline(text, *self.tri_double)
-
-    def match_multiline(self, text, delimiter, in_state, style):
-        """Do highlighting of multi-line strings. ``delimiter`` should be a
-        ``QRegExp`` for triple-single-quotes or triple-double-quotes, and
-        ``in_state`` should be a unique integer to represent the corresponding
-        state changes when inside those strings. Returns True if we're still
-        inside a multi-line string when this function is finished.
-        """
-        # If inside triple-single quotes, start at 0
-        if self.previousBlockState() == in_state:
-            start = 0
-            add = 0
-        # Otherwise, look for the delimiter on this line
+        try:
+            if not self.visitor.revision() == self.document().revision():
+                node = self.visitor.parse(self.document().toPlainText())
+                self.visitor.set_revision(self.document().revision())
+                # maybe we should have this be conditional
+                # or maybe done by signal. but how do we guarantee that it's done by the time this
+                # block is called?
+        except (ParseError, IncompleteParseError, VisitationError) as e:
+            print('caught zz', e)
+            pass
         else:
-            start = delimiter.indexIn(text)
-            # skipping triple quotes within strings
-            if start in self.tripleQuoutesWithinStrings:
-                return False
-            # Move past this match
-            add = delimiter.matchedLength()
+            print('Parsing Successful, setting formats')
+            for (start, length, format) in self.visitor.get_formats_for_block(self.currentBlock()):
+                self.setFormat(start, length, STYLES[format])
 
-        # As long as there's a delimiter match on this line...
-        while start >= 0:
-            # Look for the ending delimiter
-            end = delimiter.indexIn(text, start + add)
-            # Ending delimiter on this line?
-            if end >= add:
-                length = end - start + add + delimiter.matchedLength()
-                self.setCurrentBlockState(0)
-            # No; multi-line string
-            else:
-                self.setCurrentBlockState(in_state)
-                length = len(text) - start + add
-            # Apply formatting
-            self.setFormat(start, length, style)
-            # Look for the next match
-            start = delimiter.indexIn(text, start + length)
 
-        # Return True if still inside a multi-line string, False otherwise
-        if self.currentBlockState() == in_state:
-            return True
+
+    def generic_visit(self, node, visited_children):
+        """ The generic visit method. """
+        return visited_children or node
+
+
+class MathJaxHightlightVisitor(NodeVisitor):
+    """ Vist and Highlight MathJax grammar elements. """
+    grammar = Grammar(mathjax_grammar_def)
+
+
+    def __init__(self, highlighter):
+        super().__init__()
+        self.highlighter = highlighter
+        self._revision = 0
+
+    def set_revision(self, rev:int):
+        self._revision = rev
+
+    def revision(self):
+        return self._revision
+
+    def setCurrentBlock(self, block:QTextBlock):
+        self.block = block
+        self.position = block.position()
+        self.length = block.length()
+
+
+    def get_formats(self, start, length, offset=0):
+        """returns a list of tuples that specify the format type of contiguous blocks in the form
+        (start, length, format)."""
+
+        block_formats = []
+        last_format = None
+
+        if length > 0 and self.format_map:
+            block_start = start - offset
+            formats = self.format_map[start:length + start]
+
+            for format in formats:
+                if format is not None:
+                    if last_format == format:
+                        block_formats[-1] = (block_formats[-1][0], block_formats[-1][1] + 1, format)
+                    else:
+                        block_formats.append((block_start, 1, format))
+                block_start += 1
+                last_format = format
+
+        return block_formats
+
+    def get_formats_for_block(self, block:QTextBlock):
+        """returns a list of tuples that specify the format type of contiguous blocks in the form
+        (start, length, format)."""
+
+        start = block.position()
+        return self.get_formats(start, len(block.text()), offset=start)
+
+    def parse(self, text: str, pos: int = 0) -> Node:
+        self.format_map = [None] * len(text)
+        return super().parse(text)
+
+
+    def visit_expr(self, node, visited_children):
+        """ Returns the overall output. """
+        # print('X:', node.txt)
+        print('visit_expr: called:')
+        return node.text
+        # return visited_children or node
+        # output = {}
+        # for child in visited_children:
+        #     output.update(child[0])
+        #     dict.update
+        # return output
+
+    def visit_token(self, node, visited_children):
+
+        print("visit_token: called")
+        return node
+
+    def visit_superscript(self, node, visited_children):
+
+        # self.highlighter.setFormat(node.start, node.end - node.start, STYLES['superscript'])
+        for i in range(node.start, node.end):
+            self.format_map[i] = 'superscript'
+        return node
+
+    def visit_subscript(self, node, visited_children):
+
+        #self.highlighter.setFormat(node.start, node.end - node.start, STYLES['subscript'])
+        for i in range(node.start, node.end):
+            self.format_map[i] = 'subscript'
+        return node
+
+    def visit_variable(self, node, visited_children):
+
+        # self.highlighter.setFormat(node.start, node.end - node.start,
+        #                            STYLES['variable'])
+        for i in range(node.start, node.end):
+            self.format_map[i] = 'variable'
+        return node
+
+    def visit_digit(self, node, visited_children):
+
+        #self.highlighter.setFormat(node.start, node.end - node.start, STYLES['digit'])
+        for i in range(node.start, node.end):
+            self.format_map[i] = 'digit'
+        return node
+
+    def visit_comment(self, node, visited_children):
+
+        #self.highlighter.setFormat(node.start, node.end - node.start, STYLES['digit'])
+        for i in range(node.start, node.end):
+            self.format_map[i] = 'comment'
+        return node
+
+    def visit_command(self, node, visited_children):
+
+        backslash, command, *_ = node.children
+        #self.highlighter.setFormat(command.start, command.end - command.start, STYLES['command'])
+        # What should we be returning, really?
+        for i in range(command.start, command.end):
+            self.format_map[i] = 'command'
+        return ('[***NODE***]', command, '[***NODE***]')
+
+    def visit_node(self, node, visited_children):
+        """ Returns the node output. """
+        print('')
+        if len(visited_children) >= 3:
+            _, expr, *_ = visited_children
+        elif len(visited_children) > 0:
+            expr, *_ = visited_children
         else:
-            return False
+            expr = None
+        pass
+        return ('[***NODE***]', expr, '[***NODE***]')
+
+
+
+    def generic_visit(self, node, visited_children):
+        """ The generic visit method. """
+        return visited_children or node
+
+
