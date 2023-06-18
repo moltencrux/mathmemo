@@ -31,6 +31,9 @@
    </property>
    <item>
     <layout class="QVBoxLayout" name="verticalLayout">
+     <property name="spacing">
+      <number>0</number>
+     </property>
      <item>
       <widget class="QWebEngineView" name="preview">
        <property name="sizePolicy">

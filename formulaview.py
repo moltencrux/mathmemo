@@ -763,6 +763,8 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         # self.installEventFilter(self)
         self.input_box.textChanged.connect(lambda: self.sizeHintChanged.emit(self.index))
         self.setFocusPolicy(Qt.StrongFocus)
+        bg_color = self.palette().color(QPalette.Active, QPalette.Base)
+        self.setStyleSheet(f"background-color: {bg_color.name()}") 
 
     def initUI(self):
         self.setupUi(self)
