@@ -1,17 +1,14 @@
-# syntax.py
-
 import sys
 
 # from PySide2 import QtCore, QtGui, QtWidgets
 from PyQt5.QtGui import (QSyntaxHighlighter, QTextBlock, QTextDocument, QTextCharFormat, QColor,
                          QFont)
 from PyQt5.QtCore import QRegExp
-from mjparse import mathjax_grammar_def
+from mjparse import mathjax_grammar_def, tokenize, MJTokenType
 
 from parsimonious.grammar import Grammar
 from parsimonious.nodes import NodeVisitor, Node
 from parsimonious.exceptions import (ParseError, IncompleteParseError, VisitationError, UndefinedLabel, BadGrammar)
-
 
 
 
@@ -22,14 +19,20 @@ def format(color, style='', background='', underline_style=QTextCharFormat.NoUnd
     _color = QColor()
     _color.setNamedColor(color)
 
+
     _format = QTextCharFormat()
     _format.setForeground(_color)
     if 'bold' in style:
         _format.setFontWeight(QFont.Bold)
     if 'italic' in style:
         _format.setFontItalic(True)
+    if background:
+        _bg_color = QColor()
+        _bg_color.setNamedColor(background)
+        _format.setBackground(_bg_color)
 
     return _format
+
 
 
 # Syntax styles that can be shared by all languages
@@ -63,6 +66,25 @@ STYLES = {
     'command': format('red'),
     'supersub': format('red'),
     'comment': format('darkGray', 'italic'),
+}
+
+TOKEN_STYLES = {
+    'keyword': format('darkcyan'),
+    'defclass': format('black', 'bold'),
+    'string': format('magenta'),
+    'string2': format('darkMagenta'),
+    'self': format('black', 'italic'),
+    'brace': format('cyan'),
+    MJTokenType.STARTGROUP.value: format('magenta'),
+    MJTokenType.ENDGROUP.value: format('magenta'),
+    MJTokenType.DIGIT.value: format('darkcyan'),
+    MJTokenType.VARIABLE.value: format('cyan'),
+    'operator': format('red'),
+    MJTokenType.COMMAND.value: format('red'),
+    MJTokenType.SUBSCRIPT.value: format('magenta'),
+    MJTokenType.SUPERSCRIPT.value: format('magenta'),
+    MJTokenType.COMMENT.value: format('darkGray', 'italic'),
+    MJTokenType.MISMATCH.value: format('white', 'bold', background='orange'),
 }
 
 
@@ -186,6 +208,17 @@ class LatexHighlighter (QSyntaxHighlighter):
             for (pat, index, fmt) in rules]
 
     def highlightBlock(self, text):
+        """Apply syntax highlighting to the given block of text.
+        """
+        # This should be sufficient for the base token highlighting.
+        # Delimiter matching & Parameter checking will come later.
+        for token in tokenize(text, ignore_mismatch=True):
+            token_format = TOKEN_STYLES.get(token.type.value, None)
+            if token_format is not None:
+                self.setFormat(token.pos, len(token.value), token_format)
+
+
+    def highlightBlock_old(self, text):
         """Apply syntax highlighting to the given block of text.
         """
 
