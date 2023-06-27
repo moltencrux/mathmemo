@@ -1,27 +1,30 @@
 import sys
 
 # from PySide2 import QtCore, QtGui, QtWidgets
-from PyQt5.QtGui import (QSyntaxHighlighter, QTextBlock, QTextDocument, QTextCharFormat, QColor,
-                         QFont)
+from PyQt5.QtGui import (QSyntaxHighlighter, QTextBlock, QTextCursor, QTextDocument,
+                         QTextCharFormat, QColor, QFont)
 from PyQt5.QtCore import QRegExp
-from mjparse import mathjax_grammar_def, tokenize, MJTokenType
+from mjparse import mathjax_grammar_def, tokenize, MJTokenType, gen_bracket_match_map
 
 from parsimonious.grammar import Grammar
 from parsimonious.nodes import NodeVisitor, Node
 from parsimonious.exceptions import (ParseError, IncompleteParseError, VisitationError, UndefinedLabel, BadGrammar)
+from bisect import bisect, bisect_left
+from operator import attrgetter
 
 
-
-def format(color, style='', background='', underline_style=QTextCharFormat.NoUnderline,
-           underline_color=''):
+def format(color='', style='', background='', underline_color='', underline_style=None,
+           base: QTextCharFormat = None):
     """Return a QTextCharFormat with the given attributes."""
 
-    _color = QColor()
-    _color.setNamedColor(color)
+    _format = QTextCharFormat(base) if base else QTextCharFormat()
+    _format.setUnderlineStyle(QTextCharFormat.WaveUnderline)
 
+    if color:
+        _color = QColor()
+        _color.setNamedColor(color)
+        _format.setForeground(_color)
 
-    _format = QTextCharFormat()
-    _format.setForeground(_color)
     if 'bold' in style:
         _format.setFontWeight(QFont.Bold)
     if 'italic' in style:
@@ -30,6 +33,13 @@ def format(color, style='', background='', underline_style=QTextCharFormat.NoUnd
         _bg_color = QColor()
         _bg_color.setNamedColor(background)
         _format.setBackground(_bg_color)
+    if underline_color:
+        _ul_color = QColor()
+        _ul_color.setNamedColor(underline_color)
+        _format.setUnderlineColor(QColor(underline_color))
+        _format.setUnderlineStyle(QTextCharFormat.SingleUnderline)
+    if underline_style:
+        _format.setUnderlineStyle(underline_style)
 
     return _format
 
@@ -84,65 +94,17 @@ TOKEN_STYLES = {
     MJTokenType.SUBSCRIPT.value: format('magenta'),
     MJTokenType.SUPERSCRIPT.value: format('magenta'),
     MJTokenType.COMMENT.value: format('darkGray', 'italic'),
+    MJTokenType.SYMBOL.value: format('white'),
     MJTokenType.MISMATCH.value: format('white', 'bold', background='orange'),
 }
 
+TOKEN_STYLES_UNDERLINE = {key: format('yellow', underline_color='yellow', base=val,
+                                      underline_style=QTextCharFormat.WaveUnderline)
+                          for key, val in TOKEN_STYLES.items()}
 
-class LatexHighlighter (QSyntaxHighlighter):
-    """Syntax highlighter for the Python language.
+class MathJaxHighlighter (QSyntaxHighlighter):
+    """Syntax highlighter for MathJax Syntax.
     """
-    # Python keywords
-    keywords = [
-        'and', 'assert', 'break', 'class', 'continue', 'def',
-        'del', 'elif', 'else', 'except', 'exec', 'finally',
-        'for', 'from', 'global', 'if', 'import', 'in',
-        'is', 'lambda', 'not', 'or', 'pass', 'print',
-        'raise', 'return', 'try', 'while', 'yield',
-        'None', 'True', 'False',
-    ]
-
-    # Python operators
-    oldoperators = [
-        '=',
-        # Comparison
-        '==', '!=', '<', '<=', '>', '>=',
-        # Arithmetic
-        '\+', '-', '\*', '/', '//', '\%', '\*\*',
-        # In-place
-        '\+=', '-=', '\*=', '/=', '\%=',
-        # Bitwise
-        '\^', '\|', '\&', '\~', '>>', '<<',
-    ]
-
-
-    operators = [
-        #r'\\[A-Za-z]+',
-        #r'\\ZZZZZZZZ[A-Za-z]+',
-    ]
-
-    variables = [
-        #r'[^\\0-9A-Za-z]([A-Za-z]+)',
-        #r'^([A-Za-z]+)',
-        #r'\\ZZZZZZZZ[A-Za-z]+',
-        #r'[A-Za-z]+',
-    ]
-
-    comment = [
-       r'%.*$'
-    ]
-
-    braces = [
-        r'\\{', r'\\}', r'\(', r'\)', r'\[', r'\]',
-    ]
-
-    group= [
-        # groups in TeX are denoted by unescaped curly braces {}
-        r'(?<!\\)\{', r'(?<!\\)\}',
-    ]
-
-    supersub= [
-        r'_', r'\^',
-    ]
 
     def __init__(self, parent: QTextDocument) -> None:
         super().__init__(parent)
@@ -151,71 +113,95 @@ class LatexHighlighter (QSyntaxHighlighter):
         # Multi-line strings (expression, flag, style)
         self.tri_single = (QRegExp("'''"), 1, STYLES['string2'])
         self.tri_double = (QRegExp('"""'), 2, STYLES['string2'])
-
-        rules = []
-
-        # Keyword, operator, and brace rules
-        # rules += [(r'\b%s\b' % w, 0, STYLES['keyword'])
-        #     for w in LatexHighlighter.keywords]
-        rules += [(r'%s' % o, 0, STYLES['operator'])
-            for o in LatexHighlighter.operators]
-        rules += [(r'%s' % b, 0, STYLES['brace'])
-            for b in LatexHighlighter.braces]
-        rules += [(r'%s' % s, 0, STYLES['supersub'])
-                  for s in LatexHighlighter.supersub]
-        rules += [(r'%s' % v, 1, STYLES['variable'])
-                  for v in LatexHighlighter.variables]
-
-        # All other rules
-        rules += [
-            # Numeric literals
-            # (r'[0-9]*\.[0-9]+', 0, STYLES['numbers']),
-            # (r'[0-9]+', 0, STYLES['numbers']),
-            #(r'\b[+-]?[0-9]+[lL]?\b', 0, STYLES['numbers']),
-            #(r'\b[+-]?0[xX][0-9A-Fa-f]+[lL]?\b', 0, STYLES['numbers']),
-            #(r'\b[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b', 0, STYLES['numbers']),
-        ]
-        """
-        rules += [
-            # 'self'
-            (r'\bself\b', 0, STYLES['self']),
-
-            # 'def' followed by an identifier
-            (r'\bdef\b\s*(\w+)', 1, STYLES['defclass']),
-            # 'class' followed by an identifier
-            (r'\bclass\b\s*(\w+)', 1, STYLES['defclass']),
-
-            # Numeric literals
-            (r'\[0-9]+', 0, STYLES['numbers']),
-            (r'\b[+-]?[0-9]+[lL]?\b', 0, STYLES['numbers']),
-            (r'\b[+-]?0[xX][0-9A-Fa-f]+[lL]?\b', 0, STYLES['numbers']),
-            (r'\b[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b', 0, STYLES['numbers']),
+        self.parse_rev = self.document().revision() - 1
+        self.update_parsing()
+        self.text_tokens = []
+        self.previous_cursor_pos = 0
 
 
-            # Double-quoted string, possibly containing escape sequences
-            (r'"[^"\\]*(\\.[^"\\]*)*"', 0, STYLES['string']),
-            # Single-quoted string, possibly containing escape sequences
-            (r"'[^'\\]*(\\.[^'\\]*)*'", 0, STYLES['string']),
+        self.bracket_map = {}
 
-            # From '#' until a newline
-            (r'#[^\n]*', 0, STYLES['comment']),
-        ]
+    def set_bracket_map(self, map):
+        self.bracket_map = map
 
-        """
 
-        # Build a QRegExp for each pattern
-        self.rules = [(QRegExp(pat), index, fmt)
-            for (pat, index, fmt) in rules]
+    def update_cursor(self, text_cursor:QTextCursor):
+        self.text_cursor = text_cursor
+        rehighlight: set = {self.previous_cursor_pos}
+        if self.text_tokens:
+            for pos in [text_cursor.position(), self.previous_cursor_pos]:
+                text_cursor.position()
+                token_index = bisect(self.text_tokens, pos, key=attrgetter('pos')) - 1
+
+                token = self.text_tokens[token_index]
+                match = self.bracket_map.get(token, None)
+
+                if match is not None:
+                    match_block = self.document().findBlock(match.pos)
+                    rehighlight.add(text_cursor.block().blockNumber())
+                    rehighlight.add(match_block.blockNumber())
+
+            for block_number in rehighlight:
+                block = self.document().findBlockByNumber(block_number)
+                self.rehighlightBlock(block)
+
+    def update_parsing(self):
+        current_rev = self.document().revision()
+        if self.parse_rev != current_rev:
+            self.text_tokens = list(tokenize(self.document().toPlainText(), ignore_mismatch=True))
+            self.bracket_map = gen_bracket_match_map(self.text_tokens)
+            self.parse_rev = current_rev
+
+
+
+    # thoughts about paren matching: how should we match and resolve ambiguity?
+    # cursor directly on, definitly highlight that.
+    # check cursor to the left/right.. maybe only highlight it only if token cursor is on directly
+    # did not/would not be highlighted.
+
 
     def highlightBlock(self, text):
         """Apply syntax highlighting to the given block of text.
         """
-        # This should be sufficient for the base token highlighting.
-        # Delimiter matching & Parameter checking will come later.
-        for token in tokenize(text, ignore_mismatch=True):
+
+        self.update_parsing()
+        block_start =  self.currentBlock().position()
+        block_end = block_start + len(self.currentBlock().text())
+
+        cursor_pos = self.text_cursor.position()
+        #match_ranges = self.bracket_map[self.text_cursor.position()]
+
+        #for token in self.text_tokens:  # this looks through all tokens. seems inefficient
+        for token in self.get_tokens_in_block(self.currentBlock()):
             token_format = TOKEN_STYLES.get(token.type.value, None)
+            match = self.bracket_map.get(token, None)
+
+            if match is not None:
+                # checks if the cursor position is within the range of a token in the block or its
+                # match.
+                if ((cursor_pos >= token.pos and cursor_pos < token.pos + len(token.text)) or
+                        (cursor_pos >= match.pos and cursor_pos < match.pos + len(match.text))):
+
+                    token_format = TOKEN_STYLES_UNDERLINE.get(token.type.value, None)
+
             if token_format is not None:
-                self.setFormat(token.pos, len(token.value), token_format)
+                # adjust the token range to be clipped by the bounds of the current block
+                # and make the positions relative to the current block
+                token_start = max(token.pos, block_start) - block_start
+                token_end = min(token.pos + len(token.text), block_end) - block_start
+                if token_format is not None and token_start < token_end:
+                    self.setFormat(token_start, token_end - token_start, token_format)
+
+
+
+    def get_tokens_in_block(self, block:QTextBlock):
+        # given a position in the document, find the token that contains it
+        token_start_index = bisect(self.text_tokens, block.position(), key=attrgetter('pos')) - 1
+        token_end_index = bisect(self.text_tokens, block.position() + block.length(),
+                                 key=attrgetter('pos')) - 1
+        return self.text_tokens[token_start_index:token_end_index + 1]
+
+
 
 
     def highlightBlock_old(self, text):

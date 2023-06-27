@@ -11,8 +11,9 @@ from PyQt5.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent
 from PyQt5.QtGui import QPalette, QImage, QPainter, QColor, QStandardItem, QStandardItemModel
 from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
+from mjparse import gen_bracket_match_map, tokenize
 
-from texsyntax import LatexHighlighter
+from texsyntax import MathJaxHighlighter
 
 import matplotlib.pyplot as plt
 plt.rc('mathtext', fontset='cm')
@@ -602,7 +603,7 @@ class FormulaDelegate(QStyledItemDelegate):
         pindex = QPersistentModelIndex(index)
 
         def emitSizeHintChanged():
-            print('emitSizeChanged:')
+            # print('emitSizeChanged:')
             index = pindex.model().index(pindex.row(), pindex.column(), pindex.parent())
             self.sizeHintChanged.emit(index)
 
@@ -757,14 +758,16 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.waitPreview = QMutex()
         self.previewUpdated = QWaitCondition()
         self.loop = QEventLoop(qApp)
-        self.highlight = LatexHighlighter(self.input_box.document())
+        self.highlight = MathJaxHighlighter(self.input_box.document())
         # installing event filter on QPlainTextEdit seems to override Ctrl+Enter default behavior
         self.input_box.installEventFilter(self)
         # self.installEventFilter(self)
         self.input_box.textChanged.connect(lambda: self.sizeHintChanged.emit(self.index))
         self.setFocusPolicy(Qt.StrongFocus)
         bg_color = self.palette().color(QPalette.Active, QPalette.Base)
-        self.setStyleSheet(f"background-color: {bg_color.name()}") 
+        self.setStyleSheet(f"background-color: {bg_color.name()}")
+        self.input_box.cursorPositionChanged.connect(self.cursor_position_changed)
+        self.cursor_position_changed()
 
     def initUI(self):
         self.setupUi(self)
@@ -774,6 +777,10 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.input_box.setFocus()
         self.input_box.grabKeyboard()
         self.setAutoFillBackground(True)
+
+    def cursor_position_changed(self):
+        # i think we should call rehighlight[Block] here
+        self.highlight.update_cursor(self.input_box.textCursor())
 
     def updateIndexThing(self, index):
         self.index = index

@@ -101,6 +101,56 @@ class MathJaxVisitorTest(NodeVisitor):
         return super().visit(node)
 
 
+# problem.. matching \left( \right) requires 2 tokens.
+
+def gen_bracket_match_map(token_list, ignore_unmatched=True):
+    bracket_map = {}
+
+    open_close_bracket_map = {
+        r'{': r'}',
+        r'\left': r'\right',
+        r'\begin': r'\end',
+        r'[': r']',
+        r'\{': r'\}',
+        r'(': r')',
+    }
+    bracket_stacks = {key:[] for key in open_close_bracket_map.keys()}
+
+    close_open_bracket_map = {v: k for k, v in open_close_bracket_map.items()}
+
+    # This could replace the for loop below. Is it really better?
+    # bracket_stacks.update((open_close_bracket_map[k], v) for k, v in bracket_stacks.items())
+    # or
+    # bracket_stacks.update((k, bracket_stacks[v]) for k, v in close_open_bracket_map.items())
+    # Is this a bug? but why would it work for { and not (?
+
+    for key in close_open_bracket_map.keys():
+        bracket_stacks[key] = bracket_stacks[close_open_bracket_map[key]]
+
+    # this should be better
+    # for k, v in close_open_bracket_map.items():
+    #     bracket_stacks[k] = bracket_stacks[v]
+
+
+
+
+
+    for token in token_list:
+        if token.text in open_close_bracket_map:
+            bracket_stacks[token.text].append(token)
+        elif token.text in close_open_bracket_map:
+            stack = bracket_stacks[token.text]
+            if stack:
+                match_token = stack.pop()
+                # need to make this the range of entries
+                bracket_map[token] = match_token
+                bracket_map[match_token] = token
+            elif not ignore_unmatched:
+                raise RuntimeError('Brackets unmatched:', token.text)
+
+    return bracket_map
+
+
 class MJTokenType(StrEnum):
     COMMENT = auto()
     COMMAND = auto()
@@ -110,7 +160,7 @@ class MJTokenType(StrEnum):
     SUPERSCRIPT = auto()
     SUBSCRIPT = auto()
     VARIABLE = auto()
-    SYMBOLS = auto()
+    SYMBOL = auto()
     NEWLINE = auto()
     SKIP = auto()
     MISMATCH = auto()
@@ -118,7 +168,7 @@ class MJTokenType(StrEnum):
 
 class Token(NamedTuple):
     type: MJTokenType
-    value: str
+    text: str
     line: int
     pos: int
 
@@ -134,7 +184,7 @@ def tokenize(code, ignore_mismatch=False):
         (MJTokenType.SUPERSCRIPT,  r'\^'),                            # Superscript/Power
         (MJTokenType.SUBSCRIPT,    r'_'),                             # Subscript
         (MJTokenType.VARIABLE,     r'[A-Za-z]'),                      # Identifiers
-        (MJTokenType.SYMBOLS,      r'[+\-*\/=()\[\]|`\$\',.:;@?]'),   # Symbols (no escape required)
+        (MJTokenType.SYMBOL,       r'[+\-*\/=()\[\]|`\$\',.:;@?]'),   # Symbols (no escape required)
         (MJTokenType.NEWLINE,      r'\n'),                            # Line endings
         (MJTokenType.SKIP,         r'[ \t]+'),                        # Skip over spaces and tabs
         (MJTokenType.MISMATCH,     r'(?:\\.)|.'),                     # Any other character
@@ -156,11 +206,13 @@ if __name__ == '__main__':
          \Pr(A_n \cap \cdots \cap A_1) = \prod_{k=1}^n P\left(
            A_k \middle| \bigcap_{j=1}^{k-1} A_j
          \right)
-       }
+    }
     '''
-    token_gen = tokenize(r'''\\xyz''', ignore_mismatch=True)
-    for token in token_gen:
-        print(token)
+    test_formula = r'''a + {a + b} \left( x \right)'''
+    #token_gen = tokenize(r'''\\xyz''', ignore_mismatch=True)
+    #for token in token_gen:
+    #    print(token)
+    print(gen_bracket_match_map(tokenize(test_formula)))
 
     # grammar = Grammar(mathjax_grammar_def)
     # tree = grammar.parse('''\displaystyle{ \n\n }  \Pr[A] \Sin''')
