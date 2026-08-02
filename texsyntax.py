@@ -1,9 +1,9 @@
 import sys
 
 # from PySide2 import QtCore, QtGui, QtWidgets
-from PyQt5.QtGui import (QSyntaxHighlighter, QTextBlock, QTextCursor, QTextDocument,
+from PyQt6.QtGui import (QSyntaxHighlighter, QTextBlock, QTextCursor, QTextDocument,
                          QTextCharFormat, QColor, QFont)
-from PyQt5.QtCore import QRegExp
+from PyQt6.QtCore import QRegularExpression
 from mjparse import mathjax_grammar_def, tokenize, MJTokenType, gen_bracket_match_map
 
 from parsimonious.grammar import Grammar
@@ -18,7 +18,7 @@ def format(color='', style='', background='', underline_color='', underline_styl
     """Return a QTextCharFormat with the given attributes."""
 
     _format = QTextCharFormat(base) if base else QTextCharFormat()
-    _format.setUnderlineStyle(QTextCharFormat.WaveUnderline)
+    _format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
 
     if color:
         _color = QColor()
@@ -26,7 +26,7 @@ def format(color='', style='', background='', underline_color='', underline_styl
         _format.setForeground(_color)
 
     if 'bold' in style:
-        _format.setFontWeight(QFont.Bold)
+        _format.setFontWeight(QFont.Weight.Bold)
     if 'italic' in style:
         _format.setFontItalic(True)
     if background:
@@ -37,7 +37,7 @@ def format(color='', style='', background='', underline_color='', underline_styl
         _ul_color = QColor()
         _ul_color.setNamedColor(underline_color)
         _format.setUnderlineColor(QColor(underline_color))
-        _format.setUnderlineStyle(QTextCharFormat.SingleUnderline)
+        _format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
     if underline_style:
         _format.setUnderlineStyle(underline_style)
 
@@ -99,7 +99,7 @@ TOKEN_STYLES = {
 }
 
 TOKEN_STYLES_UNDERLINE = {key: format('yellow', underline_color='yellow', base=val,
-                                      underline_style=QTextCharFormat.WaveUnderline)
+                                      underline_style=QTextCharFormat.UnderlineStyle.WaveUnderline)
                           for key, val in TOKEN_STYLES.items()}
 
 class MathJaxHighlighter (QSyntaxHighlighter):
@@ -111,8 +111,8 @@ class MathJaxHighlighter (QSyntaxHighlighter):
         self.visitor = MathJaxHightlightVisitor(self)
 
         # Multi-line strings (expression, flag, style)
-        self.tri_single = (QRegExp("'''"), 1, STYLES['string2'])
-        self.tri_double = (QRegExp('"""'), 2, STYLES['string2'])
+        self.tri_single = (QRegularExpression("'''"), 1, STYLES['string2'])
+        self.tri_double = (QRegularExpression('"""'), 2, STYLES['string2'])
         self.parse_rev = self.document().revision() - 1
         self.update_parsing()
         self.text_tokens = []

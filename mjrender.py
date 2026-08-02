@@ -1,9 +1,10 @@
 
-from PyQt5.QtCore import (pyqtProperty, pyqtSignal, pyqtSlot, QEventLoop, QObject, QSettings, Qt,
+from PyQt6.QtCore import (pyqtProperty, pyqtSignal, pyqtSlot, QEventLoop, QObject, QSettings, Qt,
                           QUrl)
-from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView
-from PyQt5.QtWebChannel import QWebChannel
-from PyQt5.QtWidgets import qApp
+from PyQt6.QtWebEngineCore import QWebEnginePage
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWidgets import QApplication
 from cairosvg import svg2svg
 from io import BytesIO
 import matplotlib.pyplot as plt
@@ -589,8 +590,8 @@ class MathJaxRenderer(QWebEnginePage):
         # I was thinking this might be something that would fix the MJ2 problems.
         # but actually I couldn't get the problem to manifest so far in this version.
         # and the QWebEnginePage doesn't have a setAttribute method
-        ###self.settings().setAttribute(Qt.WA_DontShowOnScreen, True)
-        ###self.settings().setAttribute(Qt.WA_DeleteOnClose, True)
+        ###self.settings().setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        ###self.settings().setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
     def _on_load_finished(self):
         self.handler.updateFormula()
@@ -611,10 +612,10 @@ class MathJaxRenderer(QWebEnginePage):
 class WebSvgRendererX(QWebEngineView):
     def __init__(self):
         super().__init__()
-        self.setAttribute(Qt.WA_DontShowOnScreen, True)
-        self.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.loadFinished.connect(self._on_load_finished)
-        self.loop = QEventLoop(qApp)
+        self.loop = QEventLoop(QApplication.instance())
 
     def loadSvg(self, svg_data):
 

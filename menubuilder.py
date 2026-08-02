@@ -1,6 +1,7 @@
 import logging
 
-from PyQt5.QtWidgets import QMenu, QAction, QActionGroup
+from PyQt6.QtWidgets import QMenu
+from PyQt6.QtGui import QAction, QActionGroup
 from collections.abc import Iterable
 
 

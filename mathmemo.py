@@ -1,12 +1,14 @@
 #!/usr/bin/env -S python3 -O
 import logging, sys, os
-from PyQt5.QtCore import pyqtSlot, QCoreApplication, QSettings, Qt
+from PyQt6.QtCore import pyqtSlot, QCoreApplication, QSettings, Qt
 
-from PyQt5.QtWidgets import (QAction, QAbstractItemView, QActionGroup, QApplication, QDialog,
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QDialog,
                              QDialogButtonBox, QFileDialog, QMainWindow, QMenu, QMessageBox,
                              QListWidgetItem)
-from PyQt5.QtGui import QStandardItem
-from PyQt5.QtWebChannel import QWebChannel
+from PyQt6.QtGui import QStandardItem, QAction, QActionGroup
+from PyQt6.QtWebChannel import QWebChannel
+
+from ui import mathmemo_rc  # register Qt resources
 
 import importlib.resources
 
@@ -64,7 +66,7 @@ for path in [mainwindow_ui_py_path, settings_ui_py_path, mainwindow_ui_py_path]:
 # I.E. ONLY use generated files if they are newer
 if ui_sources_available and (source_ctime > generated_ctime or not ui_generated_available):
     logging.debug('importing ui files')
-    from PyQt5 import uic
+    from PyQt6 import uic
     ###Ui_MainWindow, _ = uic.loadUiType('ui/mathmemo.ui', from_imports=True, import_from='ui')
     ###Ui_settings, _ = uic.loadUiType('ui/settings.ui', from_imports=True, import_from='ui')
     Ui_MainWindow, _ = uic.loadUiType(mathmemo_ui_path, from_imports=True, import_from='ui')
@@ -156,11 +158,11 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         logging.debug('method cls: {}'.format(self.eq_view.copyDefault.__func__))
 
     def show_settings_ui(self):
-        response = self.settings_ui.exec_()
+        response = self.settings_ui.exec()
 
-        if response == QDialogButtonBox.Apply or response == QDialogButtonBox.Ok:
+        if response == QDialogButtonBox.StandardButton.Apply or response == QDialogButtonBox.StandardButton.Ok:
             self.settings_ui.saveSettings()
-        if response == QDialogButtonBox.Cancel or response == QDialogButtonBox.Ok:
+        if response == QDialogButtonBox.StandardButton.Cancel or response == QDialogButtonBox.StandardButton.Ok:
             self.close()
 
     def updatePreview(self, ):
@@ -172,14 +174,14 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         ...
 
     # def eventFilter(self, obj, event):
-    #     if obj is self.input_box and event.type() == QEvent.FocusIn:
+    #     if obj is self.input_box and event.type() == QEvent.Type.FocusIn:
     #         # Clear the input box when it receives focus
     #         # self.input_box.setPlainText('')
     #         ...
     #
-    #       if event.type() == QEvent.KeyPress and obj is self.input_box:
-    #         if event.key() == Qt.Key_Return and self.input_box.hasFocus():
-    #             if event.modifiers() & Qt.ControlModifier:
+    #       if event.type() == QEvent.Type.KeyPress and obj is self.input_box:
+    #         if event.key() == Qt.Key.Key_Return and self.input_box.hasFocus():
+    #             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
     #                 print('ZZZZZZZZZZZZZcaught ctrl+enter')
     #                 self.commit_current_formula()
     #                 return True  # this seems to delete the trailing \n.. interesting
@@ -210,7 +212,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
     @pyqtSlot()
     def on_add_new_button_clicked(self):
         # Debounce this: Don't add new when we are editing
-        if self.eq_view.state() != QAbstractItemView.EditingState:
+        if self.eq_view.state() != QAbstractItemView.State.EditingState:
             self.eq_view.append_new_and_edit()
 
             # editItem doesn't block, so we don't need to delete anything if user abandons the edit
@@ -264,7 +266,7 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
             quit_dialog.setStandardButtons(
                 QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
             quit_dialog.setDefaultButton(QMessageBox.StandardButton.Save)
-            response = quit_dialog.exec_()
+            response = quit_dialog.exec()
 
             if response == QMessageBox.StandardButton.Save:
                 self.on_actionSave_triggered()
@@ -343,4 +345,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     main = MainEqWindow()
     main.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

@@ -1,15 +1,17 @@
 import logging, sys, os
 from functools import partial
 from enum import Enum, StrEnum
-from PyQt5.QtWidgets import (qApp, QAbstractItemDelegate, QAction, QActionGroup, QListView,
+from PyQt6.QtWidgets import (QAbstractItemDelegate, QListView,
                              QSizePolicy, QAbstractItemView, QListWidgetItem, QStyle,
-                             QStyledItemDelegate, QWidget, QLineEdit)
-from PyQt5.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent, QEventLoop, Qt,
+                             QStyledItemDelegate, QWidget, QLineEdit, QApplication)
+from PyQt6.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent, QEventLoop, Qt,
                           QMimeData, QMutex, QMutexLocker, QObject, QPoint, QRectF, QSettings,
                           QSize, QTemporaryFile, QUrl, QWaitCondition, QPersistentModelIndex,
-                          QModelIndex, QVariant)
-from PyQt5.QtGui import QPalette, QImage, QPainter, QColor, QStandardItem, QStandardItemModel
-from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
+                          QModelIndex)
+from PyQt6.QtGui import (QPalette, QImage, QPainter, QColor, QStandardItem, QStandardItemModel,
+                         QAction, QActionGroup)
+from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtSvgWidgets import QSvgWidget
 from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
 from mjparse import gen_bracket_match_map, tokenize
 
@@ -24,7 +26,7 @@ from collections import namedtuple
 from io import BytesIO
 
 # Move this to a modular debugging kit for PyQT.  Is there anything prebuilt that does this?
-event_dict = {getattr(QEvent, v):v for v in dir(QEvent) if isinstance(getattr(QEvent, v), QEvent.Type)}
+event_dict = {getattr(QEvent.Type, v): v for v in dir(QEvent.Type) if not v.startswith('_')}
 
 class CopyProfile(StrEnum):
     SVG = 'SVG'
@@ -66,14 +68,14 @@ class FormulaView(QListView):
         self.formula_queue = [] # should this be a deque ?
         self.init_action_dicts()
         self.formula_queue_mutex = QMutex()
-        self.clipboard = qApp.clipboard()
+        self.clipboard = QApplication.clipboard()
 
-        self.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setUniformItemSizes(False)
         self.setSpacing(1)
 
-        self.setViewMode(QListView.ListMode)
-        self.setResizeMode(QListView.Adjust)
+        self.setViewMode(QListView.ViewMode.ListMode)
+        self.setResizeMode(QListView.ResizeMode.Adjust)
         self.setModel(QStandardItemModel())
 
         self.setStyleSheet("QListWidget"
@@ -87,16 +89,16 @@ class FormulaView(QListView):
                                   "}"
                                   )
 
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.listContextMenuRequested)
         self.delegate = FormulaDelegate(self)
         self.setItemDelegate(self.delegate)
-        self.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
-        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setDragEnabled(True)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setAcceptDrops(True)
-        self.setDefaultDropAction(Qt.MoveAction)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
 
         self.mj_renderer = MathJaxRenderer(self)
         self.mj_renderer.formulaProcessed.connect(self.append_formula_svg)
@@ -106,9 +108,9 @@ class FormulaView(QListView):
     def eventFilter(self, object: QObject, event: QEvent) -> bool:
         ...
 
-        if event.type() == QEvent.KeyPress:  # and obj is self:
+        if event.type() == QEvent.Type.KeyPress:  # and obj is self:
 
-            if event.key() == Qt.Key_Delete and event.modifiers() & Qt.ControlModifier:
+            if event.key() == Qt.Key.Key_Delete and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 for index in self.selectedIndexes():
                     self.deleteEquation(index.row())
 
@@ -130,8 +132,8 @@ class FormulaView(QListView):
 
     def append_new(self):
         item = QStandardItem()
-        item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
-                      Qt.ItemIsDragEnabled)
+        item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled |
+                      Qt.ItemFlag.ItemIsDragEnabled)
         # item.setHidden(True)
         self.model().appendRow([item])
         index = item.index()
@@ -173,7 +175,7 @@ class FormulaView(QListView):
         delete_act.setEnabled(index_items_enabled)
         delete_act.setData(self.deleteEquation.__func__)
 
-        selection = menu.exec_(self.mapToGlobal(pos))
+        selection = menu.exec(self.mapToGlobal(pos))
         logging.debug("CM selection: {} row {}".format(selection, row))
 
         if selection:
@@ -195,7 +197,7 @@ class FormulaView(QListView):
     def copySvg(self, row):
 
         item = self.model().item(row)
-        rec = item.data(Qt.UserRole)
+        rec = item.data(Qt.ItemDataRole.UserRole)
         svg = rec.svg_data
 
         # create a QMimeData object and set the SVG data
@@ -217,9 +219,9 @@ class FormulaView(QListView):
     def copySvgText(self, row):
 
         item = self.model().item(row)
-        rec = item.data(Qt.UserRole)
+        rec = item.data(Qt.ItemDataRole.UserRole)
         svg = rec.svg_data
-        qApp.clipboard().setText(svg.decode())
+        QApplication.clipboard().setText(svg.decode())
 
 
     @register
@@ -237,15 +239,15 @@ class FormulaView(QListView):
         # so then a ratio of 6 would be 1200 dpi, 24 would be 300, 48: 150
 
         item = self.model().item(row)
-        rec = item.data(Qt.UserRole)
+        rec = item.data(Qt.ItemDataRole.UserRole)
         svg = rec.svg_data
 
         renderer = QSvgRenderer()
         renderer.load(svg.replace(b'currentColor', b'black'))
-        image = QImage(renderer.defaultSize() / rfactor, QImage.Format_ARGB32)
-        #image = QImage(renderer.defaultSize() / rfactor, QImage.Format_RGB666)
+        image = QImage(renderer.defaultSize() / rfactor, QImage.Format.Format_ARGB32)
+        #image = QImage(renderer.defaultSize() / rfactor, QImage.Format.Format_RGB666)
         #image.fill(0x00000000)  # fill the image with transparent pixels
-        image.fill(Qt.white)
+        image.fill(Qt.GlobalColor.white)
         painter = QPainter(image)
         renderer.render(painter)
         painter.end()
@@ -265,7 +267,7 @@ class FormulaView(QListView):
         data = QMimeData()
         url = QUrl.fromLocalFile(filename)
         data.setUrls([url])
-        qApp.clipboard().setMimeData(data)
+        QApplication.clipboard().setMimeData(data)
 
 
     @register
@@ -273,7 +275,7 @@ class FormulaView(QListView):
 
         item = self.model().item(row)
         formula = item.text()
-        qApp.clipboard().setText(formula)
+        QApplication.clipboard().setText(formula)
         logging.debug(f'copyEquation called {formula}')
 
     # setting class default copy behavior
@@ -306,23 +308,23 @@ class FormulaView(QListView):
         svg = QSvgWidget()
         svg_data = render_latex_as_svg(formula)
         svg.load(svg_data)
-        svg.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        svg.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         # svg.sizeHint() returns (460, 345)
         self.layout().addWidget(svg)
 
     def append_formula_svg(self, formula, svg:bytes):
 
         item = QStandardItem()
-        item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
-                      Qt.ItemIsDragEnabled)
+        item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled |
+                      Qt.ItemFlag.ItemIsDragEnabled)
         item.setText(formula)
 
         rec = FormulaData(svg, None)
-        item.setData(rec, Qt.UserRole)
+        item.setData(rec, Qt.ItemDataRole.UserRole)
 
         item = QStandardItem()
-        item.setFlags(Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled |
-                      Qt.ItemIsDragEnabled)
+        item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled |
+                      Qt.ItemFlag.ItemIsDragEnabled)
         # item.setHidden(True)
         self.model().appendRow([item])
         # self.setItemWidget(item, svg_widget)
@@ -438,27 +440,27 @@ class FormulaDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
 
         # model.layoutChanged.emit()
-        # if parent.state() == QAbstractItemView.EditingState and self.editing_index.row() == index.row():
-        if option.state & QStyle.State_Editing:
+        # if parent.state() == QAbstractItemView.State.EditingState and self.editing_index.row() == index.row():
+        if option.state & QStyle.StateFlag.State_Editing:
             print('paint: called, State_Editing')
             model = index.model()
             #XXXmodel.layoutChanged.emit()
             # self.sizeHintChanged.emit(index)
-        rec = index.data(Qt.UserRole)
+        rec = index.data(Qt.ItemDataRole.UserRole)
         # renderer = self.renderer
         if rec is not None and rec.svg_data is not None:
             svg = rec.svg_data
             # later we should check option.state and render differently if selected
-            if option.state & QStyle.State_Selected:
+            if option.state & QStyle.StateFlag.State_Selected:
                 bg_color = option.palette.highlight().color()
-                draw_color = option.palette.color(QPalette.Active, QPalette.HighlightedText)
+                draw_color = option.palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText)
                 painter.setBrush(option.palette.highlightedText()) #seems to do nothing
                 painter.fillRect(QRectF(option.rect), bg_color)
 
             else:
-                bg_color = option.palette.color(QPalette.Active, QPalette.Base)
+                bg_color = option.palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Base)
                 draw_color = option.palette.text().color() # this color is too light
-                #draw_color = QColor(QPalette.Text) # using hard coded Text color instead
+                #draw_color = QColor(QPalette.ColorRole.Text) # using hard coded Text color instead
                 painter.setBrush(option.palette.windowText()) # this seems to not affect SVG rendering
                 painter.fillRect(QRectF(option.rect), bg_color)
 
@@ -470,7 +472,7 @@ class FormulaDelegate(QStyledItemDelegate):
             # this replace is dependent on the svg format.  Maybe we should transform it
             # at the soruce so we can adjust it easily with bytes.format.
             self.renderer.load(svg.replace(b'rgb(0%, 0%, 0%)', draw_color.name().encode()))
-            self.renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+            self.renderer.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
             height =  self.renderer.viewBox().height()
             vpad = int(height * 0.1) # don't like this as a percent..
             self.renderer.viewBox().adjusted(0, -vpad, 0, vpad)
@@ -506,18 +508,18 @@ class FormulaDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
 
         # this may do nothing. I think this was attempting to get the
-        # QStyle.State_Editing flag set the way I expected it.
+        # QStyle.StateFlag.State_Editing flag set the way I expected it.
         self.initStyleOption(option, index)
         base_hint = super().sizeHint(option, index)
         viewport_hint = self.parent().maximumViewportSize()
 
-        rec = index.data(Qt.UserRole)
+        rec = index.data(Qt.ItemDataRole.UserRole)
         parent:FormulaView = self.parent()
         pindex = QPersistentModelIndex(index)
 
-        # if parent.state() == QAbstractItemView.EditingState:
+        # if parent.state() == QAbstractItemView.State.EditingState:
 
-        # if option.state & QStyle.State_Editing: # <- this does not properly detect an item edit
+        # if option.state & QStyle.StateFlag.State_Editing: # <- this does not properly detect an item edit
         edit_override_hint = None
         if self.is_being_edited(index):
             editor = self.get_editor_from_index(index)
@@ -533,7 +535,7 @@ class FormulaDelegate(QStyledItemDelegate):
         elif rec is not None:
             svg = rec.svg_data
             self.renderer.load(svg)
-            self.renderer.setAspectRatioMode(Qt.KeepAspectRatio)
+            self.renderer.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
             vpad = settings.value("display/verticalPadding", 200, type=int)
             rfactor = settings.value("display/reductionFactor", 24, type=float)
@@ -564,7 +566,7 @@ class FormulaDelegate(QStyledItemDelegate):
             logging.debug('delegate sizeHint: {}'.format(hint))
             # look at renderer.defaultSize
 
-            # if option.state & QStyle.State_Selected: # is this check broken too?
+            # if option.state & QStyle.StateFlag.State_Selected: # is this check broken too?
             return hint
         else:
             try:
@@ -593,7 +595,7 @@ class FormulaDelegate(QStyledItemDelegate):
             print('createEditor: editor already open!!!')
 
         # https://stackoverflow.com/questions/71358160/qt-update-view-size-on-delegate-sizehint-change
-        #if not option.state & QStyle.State_Editing:
+        #if not option.state & QStyle.StateFlag.State_Editing:
 
         model = index.model()
         editor = FormulaEdit(parent)
@@ -640,14 +642,14 @@ class FormulaDelegate(QStyledItemDelegate):
         rec = FormulaData(svg_data, None)
 
         model.setData(index, editor.formula)
-        model.setData(index, rec, Qt.UserRole)
+        model.setData(index, rec, Qt.ItemDataRole.UserRole)
 
 
     @pyqtSlot()
     def abort_and_close_editor(self):
         editor = self.sender()
         editor.delegate_processed = True
-        self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
+        self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
 
     @pyqtSlot()
     def commit_and_close_editor(self):
@@ -663,18 +665,18 @@ class FormulaDelegate(QStyledItemDelegate):
             # append a new item and edit it if we're on the last row
             self.parent().append_new()
             self.commitData.emit(editor)
-            self.closeEditor.emit(editor, QStyledItemDelegate.EditNextItem)
+            self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.EditNextItem)
         else:
             self.commitData.emit(editor)
-            self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
+            self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
 
     #def editorEvent(self, event: QtCore.QEvent, model: QtCore.QAbstractItemModel, option: 'QStyleOptionViewItem', index: QtCore.QModelIndex) -> bool:
 
     #def closeEditor(self, editor: QWidget, hint: QAbstractItemDelegate.EndEditHint) -> None:
     #@pyqtSlot(QWidget, QAbstractItemDelegate.EndEditHint)
-    def close_editor(self, editor:QWidget, hint=QAbstractItemDelegate.NoHint) -> None:
+    def close_editor(self, editor:QWidget, hint=QAbstractItemDelegate.EndEditHint.NoHint) -> None:
         #shouldn't need to do this again I think
-        #self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
+        #self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
         # how can we get this? closeEditor signal has editor & hint
 
         index = self.get_index_from_editor(editor)
@@ -711,22 +713,22 @@ class FormulaDelegate(QStyledItemDelegate):
             index = pindex.model().index(pindex.row(), pindex.column(), pindex.parent())
             self.sizeHintChanged.emit(index)
 
-        elif event.type() == QEvent.KeyPress:  # and obj is self:
-            if event.key() == Qt.Key_Escape:
+        elif event.type() == QEvent.Type.KeyPress:  # and obj is self:
+            if event.key() == Qt.Key.Key_Escape:
                 index = self.get_index_from_editor(editor)
                 if index:
-                    self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)  # method of delegate
+                    self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)  # method of delegate
                     return True
 
         # This doesn't work quite right, maybe do it in the editor eventFilter?
-        # elif event.type() == QEvent.FocusOut:  # must be some other event
+        # elif event.type() == QEvent.Type.FocusOut:  # must be some other event
         #     index = self.get_index_from_editor(editor)
         #     model = index.model()
-        #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint) # method of delegate
+        #     self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint) # method of delegate
         #     return True
 
         # Trying to prevent editor close on losing focus
-        elif event.type() in {QEvent.FocusAboutToChange, QEvent.FocusOut}:
+        elif event.type() in {QEvent.Type.FocusAboutToChange, QEvent.Type.FocusOut}:
             print('FocusAboutToChange/FocusOut')
             return True
 
@@ -757,14 +759,14 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.mj_renderer.formulaProcessed.connect(self.setFormulaData)
         self.waitPreview = QMutex()
         self.previewUpdated = QWaitCondition()
-        self.loop = QEventLoop(qApp)
+        self.loop = QEventLoop(QApplication.instance())
         self.highlight = MathJaxHighlighter(self.input_box.document())
         # installing event filter on QPlainTextEdit seems to override Ctrl+Enter default behavior
         self.input_box.installEventFilter(self)
         # self.installEventFilter(self)
         self.input_box.textChanged.connect(lambda: self.sizeHintChanged.emit(self.index))
-        self.setFocusPolicy(Qt.StrongFocus)
-        bg_color = self.palette().color(QPalette.Active, QPalette.Base)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        bg_color = self.palette().color(QPalette.ColorGroup.Active, QPalette.ColorRole.Base)
         self.setStyleSheet(f"background-color: {bg_color.name()}")
         self.input_box.cursorPositionChanged.connect(self.cursor_position_changed)
         self.cursor_position_changed()
@@ -819,26 +821,26 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
     def eventFilter(self, obj, event):
 
-        if event.type() == QEvent.KeyPress: # and obj is self:
+        if event.type() == QEvent.Type.KeyPress: # and obj is self:
 
-            if event.key() in {Qt.Key_Return, Qt.Key_Enter}:
-                if event.modifiers() & Qt.ControlModifier:
+            if event.key() in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                     self.editingFinished.emit()
                     return True
-                elif event.modifiers() & Qt.ShiftModifier:
+                elif event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                     return True
-            elif event.key() == Qt.Key_Escape:
+            elif event.key() == Qt.Key.Key_Escape:
                 # maybe just send a signal or sth to remove the item, and that it was abandoned
                 # self.closeEditor.emit() # method of delegate
                 return False
-            # elif event.key() == Qt.Key_U:
+            # elif event.key() == Qt.Key.Key_U:
             #     self.size_hint_inc()
             #     return False
-            # elif event.key() == Qt.Key_D:
+            # elif event.key() == Qt.Key.Key_D:
             #     self.size_hint_dec()
             #     return False
 
-        # elif event.type() == QEvent.FocusOut:  # must be some other event
+        # elif event.type() == QEvent.Type.FocusOut:  # must be some other event
         #     self.editingAborted.emit()
         #     return True
 
