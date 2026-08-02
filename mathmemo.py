@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -O
-import logging, sys, os
+import logging, sys
 from PyQt6.QtCore import pyqtSlot, QCoreApplication, QSettings, Qt
 
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QDialog,
@@ -10,7 +10,7 @@ from PyQt6.QtWebChannel import QWebChannel
 
 from ui import mathmemo_rc  # register Qt resources
 
-import importlib.resources
+from ui_loader import load_ui_class, UI_CLASSES
 
 QCoreApplication.setApplicationName('moltencrux')
 QCoreApplication.setOrganizationName('MathMemo')
@@ -23,61 +23,8 @@ if __debug__:
 else:
     logging.basicConfig(stream=sys.stderr, level=logging.ERROR)
 
-def pathhelper(resource, package='ui'):
-    co = importlib.resources.as_file(importlib.resources.files(package).joinpath(resource))
-    with co as posix_path:
-        path = posix_path
-    return path
-
-
-# check age of files..
-# as_file(files(package).joinpath(resource))
-mathmemo_ui_path = pathhelper('mathmemo.ui')
-settings_ui_path = pathhelper('settings.ui')
-
-for path in [mathmemo_ui_path, settings_ui_path]:
-    source_ctime = 0
-    try:
-        source_ctime = max(os.path.getctime(path), source_ctime)
-    except (FileNotFoundError, PermissionError):
-        source_ctime = 0
-        ui_sources_available = False
-        break
-    else:
-        ui_sources_available = True
-
-mathmemo_ui_py_path = pathhelper('mathmemo_rc.py')
-settings_ui_py_path = pathhelper('settings_ui.py')
-mainwindow_ui_py_path = pathhelper('mainwindow_ui.py')
-
-
-for path in [mainwindow_ui_py_path, settings_ui_py_path, mainwindow_ui_py_path]:
-    generated_ctime = sys.maxsize
-    try:
-        generated_ctime = min(os.path.getctime(path), generated_ctime)
-    except (FileNotFoundError, PermissionError):
-        source_ctime = 0
-        ui_generated_available = False
-        break
-    else:
-        ui_generated_available = True
-
-# if ANY .ui file is newer than any generated .py file, prefer compiling the UI.
-# I.E. ONLY use generated files if they are newer
-if ui_sources_available and (source_ctime > generated_ctime or not ui_generated_available):
-    logging.debug('importing ui files')
-    from PyQt6 import uic
-    ###Ui_MainWindow, _ = uic.loadUiType('ui/mathmemo.ui', from_imports=True, import_from='ui')
-    ###Ui_settings, _ = uic.loadUiType('ui/settings.ui', from_imports=True, import_from='ui')
-    Ui_MainWindow, _ = uic.loadUiType(mathmemo_ui_path, from_imports=True, import_from='ui')
-    Ui_settings, _ = uic.loadUiType(settings_ui_path, from_imports=True, import_from='ui')
-elif ui_generated_available:
-    logging.debug('importing generated files')
-    from ui.mainwindow_ui import Ui_MainWindow
-    from ui.settings_ui import Ui_settings
-else:
-    logging.critical('UI imports unavailable, exiting...')
-    sys.exit(-1)
+Ui_MainWindow = load_ui_class(*UI_CLASSES['MainWindow'])
+Ui_settings = load_ui_class(*UI_CLASSES['Settings'])
 
 #from mjrender import (context, mathjax_v2_url, mathjax_url_remote, mathjax_url, mathjax_v2_config,
 #                      mathjax_config, page_template)

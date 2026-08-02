@@ -735,8 +735,10 @@ class FormulaDelegate(QStyledItemDelegate):
         return super().eventFilter(editor, event)
 
 
-from ui.settings_ui import Ui_settings
-from ui.formulaedit_ui import Ui_FormulaEdit
+from ui_loader import load_ui_class, UI_CLASSES
+
+Ui_settings = load_ui_class(*UI_CLASSES['Settings'])
+Ui_FormulaEdit = load_ui_class(*UI_CLASSES['FormulaEdit'])
 
 # how to prevent closing of editor i think
 # https://stackoverflow.com/questions/54623332/qtableview-prevent-departure-from-cell-and-closure-of-delegate-editor
