@@ -707,7 +707,7 @@ class FormulaDelegate(QStyledItemDelegate):
         editor.setGeometry(rect)
 
     def eventFilter(self, editor, event: QEvent):
-        if event.type() == event.LayoutRequest:
+        if event.type() == QEvent.Type.LayoutRequest:
 
             pindex = self.get_index_from_editor(editor)
             index = pindex.model().index(pindex.row(), pindex.column(), pindex.parent())
