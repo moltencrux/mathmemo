@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QDialog,
                              QListWidgetItem)
 from PyQt6.QtGui import QStandardItem, QAction, QActionGroup
 from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from ui import mathmemo_rc  # register Qt resources
 
@@ -42,6 +43,15 @@ class MainEqWindow(QMainWindow, Ui_MainWindow):
         self.svg_queue = []
         self.copy_mode = 'image'
         self.default_filename = None
+        self._webengine_warmup = None
+
+    def hideEvent(self, event):
+        logging.debug('MainEqWindow hideEvent geo=%s', self.geometry())
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        logging.debug('MainEqWindow showEvent geo=%s', self.geometry())
+        super().showEvent(event)
 
     def initUI(self):
         self.setupUi(self)
@@ -288,8 +298,35 @@ class MainSettings(QDialog, Ui_settings):
             settings.value("main/mathjaxUrl", mathjax_v3_url, type=str))
 
 
+def _warmup_webengine(main_window):
+    """Embed a QWebEngineView as a *child of the main window* so the window
+    surface is prepared for WebEngine *before* the user clicks Add.
+
+    A top-level / WA_DontShowOnScreen warm-up is not enough: the hide/show
+    happens when the first QWebEngineView is inserted into this window's
+    hierarchy. Doing that at startup moves any flash off the Add path.
+    """
+    logging.debug('WebEngine warm-up: embedding QWebEngineView in main window')
+    warmup = QWebEngineView(main_window)
+    warmup.setObjectName('webengine_warmup')
+    warmup.setFixedSize(1, 1)
+    warmup.move(0, 0)
+    warmup.lower()  # under other widgets
+    warmup.setHtml('<html><body></body></html>')
+    warmup.show()
+    app = QApplication.instance()
+    # Give the compositor a moment to process the embed.
+    for _ in range(5):
+        app.processEvents()
+    warmup.hide()
+    main_window._webengine_warmup = warmup
+    logging.debug('WebEngine warm-up: done (child of main window)')
+
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     main = MainEqWindow()
     main.show()
+    app.processEvents()
+    _warmup_webengine(main)
     sys.exit(app.exec())

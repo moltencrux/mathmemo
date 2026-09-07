@@ -3,8 +3,9 @@ from functools import partial
 from enum import Enum, StrEnum
 from PyQt6.QtWidgets import (QAbstractItemDelegate, QListView,
                              QSizePolicy, QAbstractItemView, QListWidgetItem, QStyle,
-                             QStyledItemDelegate, QWidget, QLineEdit, QApplication)
-from PyQt6.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent, QEventLoop, Qt,
+                             QStyledItemDelegate, QWidget, QLineEdit, QApplication, QLabel)
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent, QEventLoop, Qt, QTimer,
                           QMimeData, QMutex, QMutexLocker, QObject, QPoint, QRectF, QSettings,
                           QSize, QTemporaryFile, QUrl, QWaitCondition, QPersistentModelIndex,
                           QModelIndex)
@@ -119,16 +120,30 @@ class FormulaView(QListView):
         return False
 
     def closeEditor(self, editor: QWidget, hint: QAbstractItemDelegate.EndEditHint) -> None:
-        if not editor.delegate_processed:
-            editor.editingAborted.emit()
-            print('closeEditor: aborting')
-        else:
-            return super().closeEditor(editor, hint)
+        if not getattr(editor, 'delegate_processed', False):
+            # Mark so we do not re-enter, then let the normal close proceed.
+            # Emitting editingAborted is enough for our abort path; we must still
+            # call super so the view finishes removing the editor.
+            editor.delegate_processed = True
+            try:
+                editor.editingAborted.emit()
+            except Exception:
+                pass
+            import traceback
+            logging.debug('closeEditor: aborting (Qt-initiated close)')
+            logging.debug('closeEditor stack:\n%s', ''.join(traceback.format_stack()))
+        return super().closeEditor(editor, hint)
 
     def append_new_and_edit(self):
+        win = self.window()
+        logging.debug('BEFORE add: win_id=%s geo=%s visible=%s',
+                      id(win), win.geometry(), win.isVisible())
         index:QModelIndex = self.append_new()
         self.setCurrentIndex(index)
-        self.edit(index)
+        ok = self.edit(index)
+        logging.debug('append_new_and_edit: edit() returned %s, state=%s', ok, self.state())
+        logging.debug('AFTER  add: win_id=%s geo=%s visible=%s state=%s',
+                      id(win), win.geometry(), win.isVisible(), self.state())
 
     def append_new(self):
         item = QStandardItem()
@@ -369,14 +384,14 @@ class FormulaView(QListView):
         with open(filename, 'wt') as f:
             for item in [self.item(i) for i in range(self.count())]:
                 formula = item.text()
-                f.write('\[' + formula + '\]\n')
+                f.write(r'\[' + formula + r'\]\n')
 
     def load_from_text(self, filename):
         with open(filename, 'rt') as f:
-            formula_list = f.read().split('\]\n\[')
+            formula_list = f.read().split(r'\]\n\[')
             if len(formula_list) > 0:
-                formula_list[0] = formula_list[0].removeprefix('\[')
-                formula_list[-1] = formula_list[-1].removesuffix('\]\n')
+                formula_list[0] = formula_list[0].removeprefix(r'\[')
+                formula_list[-1] = formula_list[-1].removesuffix(r'\]\n')
         for formula in formula_list:
             # FIXME should we clear this first? or do we append to what is currently loaded?
             self.append_formula(formula)
@@ -542,31 +557,27 @@ class FormulaDelegate(QStyledItemDelegate):
 
             ####self.renderer.setViewBox(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad))
 
-            if self.renderer:
+            if self.renderer.isValid():
                 logging.debug('delegate: basing size on renderer')
-                ###hint = self.renderer.defaultSize() / rfactor
-                hint = self.renderer.defaultSize() * 4 #
-                # this almost works.. maybe subtract a little
-                print('sizeHint: base_hint', base_hint)
-                print('sizeHint: hint (original):', hint)
-                if hint.width() > viewport_hint.width():
-                    hint = hint * (viewport_hint.width() / hint.width())
-                print('sizeHint: hint (modified):', hint)
-                #hint.setWidth(base_hint.width())
-                # something is goign on.. maybe it doesn't always work
+                hint = self.renderer.defaultSize() * 4
+                # Guard against degenerate / empty SVGs (MathJax empty formula)
+                if not hint.isValid() or hint.width() <= 0 or hint.height() <= 0:
+                    logging.debug('delegate: invalid/empty SVG size, falling back')
+                    hint = QSize(400, 80)
+                else:
+                    if hint.width() > viewport_hint.width() > 0:
+                        hint = hint * (viewport_hint.width() / hint.width())
+                    # never return a zero-height row
+                    if hint.height() < 40:
+                        hint.setHeight(40)
             else:
                 hint = QStyledItemDelegate.sizeHint(self, option, index)
-
-            logging.debug('otherwise: {}'.format(QStyledItemDelegate.sizeHint(self, option, index)))
+                if not hint.isValid() or hint.height() < 1:
+                    hint = QSize(400, 80)
 
             data = index.data()
-            logging.debug('delegate: rfactor = {}'.format(rfactor))
-            logging.debug('delegate: vpad {}'.format(vpad))
-            logging.debug('delegate: formula = {}'.format(data))
-            logging.debug('delegate sizeHint: {}'.format(hint))
-            # look at renderer.defaultSize
-
-            # if option.state & QStyle.StateFlag.State_Selected: # is this check broken too?
+            logging.debug('delegate: rfactor=%s vpad=%s formula=%r sizeHint=%s',
+                          rfactor, vpad, data, hint)
             return hint
         else:
             try:
@@ -574,9 +585,9 @@ class FormulaDelegate(QStyledItemDelegate):
                 hint = editor.sizeHint()
                 return hint
             except:
-                # This seems to be happening when we first insert items, so it's probably not
-                # an exceptional condition. Just need a sizeHint for a new empty item.
-                hint = QSize(500, 900)
+                # First insertion of an empty item — use a modest default so the
+                # main window does not jump dramatically.
+                hint = QSize(400, 120)
                 return hint
             #return super().sizeHint(option, index)
 
@@ -598,7 +609,11 @@ class FormulaDelegate(QStyledItemDelegate):
         #if not option.state & QStyle.StateFlag.State_Editing:
 
         model = index.model()
-        editor = FormulaEdit(parent)
+        # Build the editor unparented so setupUi's QWebEngineView is NOT
+        # inserted into the already-visible main window (that causes
+        # withdraw/show on Linux). Parent it to the view only after init.
+        editor = FormulaEdit(None)
+        editor.setParent(parent)
         self.associate_editor_index(editor, index)
         editor.editingFinished.connect(self.commit_and_close_editor)
         editor.editingAborted.connect(self.abort_and_close_editor)
@@ -611,12 +626,11 @@ class FormulaDelegate(QStyledItemDelegate):
 
         editor.sizeHintChanged.connect(emitSizeHintChanged)
         editor.updateIndexThing(QPersistentModelIndex(index))
-        self.sizeHintChanged.emit(index)
-        # XXThis didn't work, but maybe it could
-        model.layoutChanged.emit()
+        # Do NOT emit sizeHintChanged here — it races with the editor being
+        # installed and can cause Qt to cancel the edit. The editor will emit
+        # sizeHintChanged itself once it is ready / when text changes.
+        # NOTE: do NOT emit model.layoutChanged here either.
         self.parent().scrollTo(index)
-
-        #model.dataChanged.emit()
         return editor
 
     def setEditorData(self, editor, index):
@@ -627,8 +641,11 @@ class FormulaDelegate(QStyledItemDelegate):
 
         if index:
             formula = index.data() or ''
+            # Block signals so setPlainText does not fire textChanged → sizeHintChanged
+            # during the critical install window.
+            editor.input_box.blockSignals(True)
             editor.input_box.setPlainText(formula)
-            self.sizeHintChanged.emit(index)
+            editor.input_box.blockSignals(False)
         else:
             super().setEditorData(editor, index)
 
@@ -692,11 +709,11 @@ class FormulaDelegate(QStyledItemDelegate):
             else:
                 self.sizeHintChanged.emit(index)
 
-            model.layoutChanged.emit()
+            # NOTE: do NOT emit model.layoutChanged here — it causes visual glitches / editor abort
         else:
-            print('###########################################')
-            print('close_editor: index is none')
-            print('###########################################')
+            import traceback
+            logging.debug('close_editor: index is none (association already cleared)')
+            logging.debug('close_editor stack:\n%s', ''.join(traceback.format_stack()))
 
     def updateEditorGeometry(self, editor, option, index:QModelIndex):
         rect = option.rect;
@@ -707,29 +724,36 @@ class FormulaDelegate(QStyledItemDelegate):
         editor.setGeometry(rect)
 
     def eventFilter(self, editor, event: QEvent):
-        if event.type() == QEvent.Type.LayoutRequest:
+        # Log anything that might close the editor so we can see the real trigger.
+        et = event.type()
 
+        if et == QEvent.Type.LayoutRequest:
             pindex = self.get_index_from_editor(editor)
-            index = pindex.model().index(pindex.row(), pindex.column(), pindex.parent())
-            self.sizeHintChanged.emit(index)
+            if pindex is not None and pindex.isValid():
+                index = pindex.model().index(pindex.row(), pindex.column(), pindex.parent())
+                self.sizeHintChanged.emit(index)
+            return False  # do not consume
 
-        elif event.type() == QEvent.Type.KeyPress:  # and obj is self:
-            if event.key() == Qt.Key.Key_Escape:
-                index = self.get_index_from_editor(editor)
-                if index:
-                    self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)  # method of delegate
-                    return True
+        if et == QEvent.Type.KeyPress:
+            key = event.key()
+            logging.debug('delegate eventFilter KeyPress key=%s modifiers=%s',
+                          key, event.modifiers())
+            # Do NOT close the editor from the delegate on Escape.
+            # FormulaEdit.eventFilter already handles Ctrl+Enter / Escape.
+            # Emitting closeEditor here was the source of the instant abort.
+            if key == Qt.Key.Key_Escape:
+                logging.debug('delegate eventFilter: Escape seen — letting default handle it')
+                # Fall through to super(); do not emit closeEditor ourselves.
+                pass
 
-        # This doesn't work quite right, maybe do it in the editor eventFilter?
-        # elif event.type() == QEvent.Type.FocusOut:  # must be some other event
-        #     index = self.get_index_from_editor(editor)
-        #     model = index.model()
-        #     self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint) # method of delegate
-        #     return True
-
-        # Trying to prevent editor close on losing focus
-        elif event.type() in {QEvent.Type.FocusAboutToChange, QEvent.Type.FocusOut}:
-            print('FocusAboutToChange/FocusOut')
+        if et in {QEvent.Type.FocusAboutToChange, QEvent.Type.FocusOut}:
+            new_focus = QApplication.focusWidget()
+            logging.debug('delegate eventFilter focus event=%s new_focus=%s editor=%s',
+                          et, new_focus, editor)
+            # Never auto-close on focus loss. Opening an inline editor often
+            # produces a FocusOut with new_focus=None (focus flicker from the
+            # button click / view). Closing is only done via Escape, Ctrl+Enter,
+            # or the commit/discard buttons on FormulaEdit.
             return True
 
         return super().eventFilter(editor, event)
@@ -758,7 +782,7 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.formula = None
         ###self.preview.setPage(self.mj_renderer)
         self.input_box.textChanged.connect(self.updatePreview)
-        self.mj_renderer.formulaProcessed.connect(self.setFormulaData)
+        # formulaProcessed is connected in _init_renderer after the page exists
         self.waitPreview = QMutex()
         self.previewUpdated = QWaitCondition()
         self.loop = QEventLoop(QApplication.instance())
@@ -775,12 +799,112 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
     def initUI(self):
         self.setupUi(self)
-        self.mj_renderer = MathJaxRenderer(self)
-        #self.mj_renderer.formulaProcessed.connect(X)
-        self.preview.setPage(self.mj_renderer)
-        self.input_box.setFocus()
-        self.input_box.grabKeyboard()
+        self.mj_renderer = None
+        self._web_preview_ready = False
+        # Do NOT call setFocus here — the editor is still being constructed.
+        # Focus is taken in showEvent once the editor is visible.
         self.setAutoFillBackground(True)
+
+        # Critical: setupUi creates a QWebEngineView named "preview" and parents it
+        # into this editor, which is already under the visible main window.
+        # Embedding the first (or a new) QWebEngineView into a mapped top-level
+        # window causes some Linux compositors to withdraw+show the window.
+        # Replace it with a plain placeholder now; create the real view later.
+        self._replace_preview_with_placeholder()
+
+    def _replace_preview_with_placeholder(self):
+        old = getattr(self, 'preview', None)
+        if old is None:
+            return
+        logging.debug('FormulaEdit: replacing preview type=%s with placeholder',
+                      type(old).__name__)
+        parent = old.parent()
+        layout = parent.layout() if parent is not None else None
+        placeholder = QLabel(parent or self)
+        placeholder.setObjectName('preview_placeholder')
+        placeholder.setMinimumHeight(old.minimumHeight() if old.minimumHeight() > 0 else 200)
+        placeholder.setSizePolicy(old.sizePolicy())
+        placeholder.setText('(preview loading…)')
+        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if layout is not None:
+            idx = layout.indexOf(old)
+            if idx >= 0:
+                layout.removeWidget(old)
+                layout.insertWidget(idx, placeholder)
+            else:
+                layout.addWidget(placeholder)
+        old.setParent(None)
+        old.deleteLater()
+        self.preview = placeholder
+
+    def _promote_preview_to_webengine(self):
+        """Install a real QWebEngineView in the editor for live MathJax preview.
+
+        Safe only *after* the main window has already embedded a QWebEngineView
+        (startup warm-up). The first embed remaps the window surface; later
+        embeds do not.
+        """
+        if self._web_preview_ready:
+            return
+        if isinstance(getattr(self, 'preview', None), QWebEngineView):
+            self._web_preview_ready = True
+            return
+
+        placeholder = getattr(self, 'preview', None)
+        parent = placeholder.parent() if placeholder is not None else self
+        layout = parent.layout() if parent is not None else None
+        view = QWebEngineView(parent)
+        view.setObjectName('preview')
+        if placeholder is not None:
+            mh = placeholder.minimumHeight()
+            view.setMinimumHeight(mh if mh > 0 else 200)
+            view.setSizePolicy(placeholder.sizePolicy())
+        else:
+            view.setMinimumHeight(200)
+        if layout is not None and placeholder is not None:
+            idx = layout.indexOf(placeholder)
+            if idx >= 0:
+                layout.removeWidget(placeholder)
+                layout.insertWidget(idx, view)
+            else:
+                layout.addWidget(view)
+            placeholder.setParent(None)
+            placeholder.deleteLater()
+        self.preview = view
+        self._web_preview_ready = True
+        logging.debug('FormulaEdit: QWebEngineView preview installed (after warm-up)')
+
+    def _init_renderer(self):
+        if self.mj_renderer is not None:
+            return
+
+        main_win = self.window()
+        warmup = getattr(main_win, '_webengine_warmup', None)
+        if warmup is None:
+            # Warm-up not done yet — try again shortly rather than embed first.
+            logging.debug('FormulaEdit: warm-up missing, deferring renderer init')
+            QTimer.singleShot(100, self._init_renderer)
+            return
+
+        if not self._web_preview_ready:
+            self._promote_preview_to_webengine()
+
+        self.mj_renderer = MathJaxRenderer(self)
+        self.preview.setPage(self.mj_renderer)
+        self.mj_renderer.formulaProcessed.connect(self.setFormulaData)
+        formula = self.input_box.toPlainText()
+        if formula:
+            self.mj_renderer.updatePreview(formula)
+        self.input_box.setFocus(Qt.FocusReason.OtherFocusReason)
+        logging.debug('FormulaEdit: live MathJax preview attached')
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.input_box.setFocus(Qt.FocusReason.OtherFocusReason)
+        # Defer WebEngine creation until after this event returns and the window
+        # has finished mapping the editor. A short delay avoids the withdraw/show.
+        if not self._web_preview_ready:
+            QTimer.singleShot(50, self._init_renderer)
 
     def cursor_position_changed(self):
         # i think we should call rehighlight[Block] here
@@ -788,7 +912,8 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
     def updateIndexThing(self, index):
         self.index = index
-        self.sizeHintChanged.emit(self.index)
+        # Do not emit sizeHintChanged here — during createEditor/setEditorData
+        # that emission races with editor install and can cancel the edit.
 
     @pyqtSlot(str, bytes)
     def setFormulaData(self, formula:str, svg_data:bytes):
@@ -805,6 +930,11 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
     def prepareFormulaData(self):
         # self.setEnabled(False)  # disable editor while processing
+        if self.mj_renderer is None:
+            # Renderer not ready yet (should be rare); just take the text
+            self.formula = self.input_box.toPlainText()
+            self.svg_data = b''
+            return
         formula = self.input_box.toPlainText()
         self.mj_renderer.submitFormula(formula)
         if self.svg_data is None:
@@ -872,6 +1002,8 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
     @pyqtSlot()
     def updatePreview(self):
+        if self.mj_renderer is None:
+            return
         formula = self.input_box.toPlainText()
         self.mj_renderer.updatePreview(formula)
 
