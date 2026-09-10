@@ -10,11 +10,12 @@ from PyQt6.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent
                           QSize, QTemporaryFile, QUrl, QWaitCondition, QPersistentModelIndex,
                           QModelIndex)
 from PyQt6.QtGui import (QPalette, QImage, QPainter, QColor, QStandardItem, QStandardItemModel,
-                         QAction, QActionGroup)
+                         QAction, QActionGroup, QPixmap)
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtSvgWidgets import QSvgWidget
 from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
 from mjparse import gen_bracket_match_map, tokenize
+from svgwebdisplay import SvgPixmapRasterizer
 
 from texsyntax import MathJaxHighlighter
 
@@ -103,7 +104,15 @@ class FormulaView(QListView):
 
         self.mj_renderer = MathJaxRenderer(self)
         self.mj_renderer.formulaProcessed.connect(self.append_formula_svg)
+        # Shared Chromium rasterizer for accurate list-item painting (one view, many pixmaps)
+        self.svg_rasterizer = SvgPixmapRasterizer(parent=self, cache_size=96)
+        self.svg_rasterizer.pixmapReady.connect(self._on_svg_pixmap_ready)
         self.installEventFilter(self)
+
+    @pyqtSlot(bytes, QSize, float)
+    def _on_svg_pixmap_ready(self, svg_bytes: bytes, logical_size: QSize, dpr: float):
+        # Any row using this SVG can now paint the cached pixmap
+        self.viewport().update()
 
 
     def eventFilter(self, object: QObject, event: QEvent) -> bool:
@@ -327,23 +336,17 @@ class FormulaView(QListView):
         # svg.sizeHint() returns (460, 345)
         self.layout().addWidget(svg)
 
-    def append_formula_svg(self, formula, svg:bytes):
-
+    def append_formula_svg(self, formula, svg: bytes):
         item = QStandardItem()
-        item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled |
-                      Qt.ItemFlag.ItemIsDragEnabled)
+        item.setFlags(
+            Qt.ItemFlag.ItemIsEditable
+            | Qt.ItemFlag.ItemIsSelectable
+            | Qt.ItemFlag.ItemIsEnabled
+            | Qt.ItemFlag.ItemIsDragEnabled
+        )
         item.setText(formula)
-
-        rec = FormulaData(svg, None)
-        item.setData(rec, Qt.ItemDataRole.UserRole)
-
-        item = QStandardItem()
-        item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled |
-                      Qt.ItemFlag.ItemIsDragEnabled)
-        # item.setHidden(True)
+        item.setData(FormulaData(svg, None), Qt.ItemDataRole.UserRole)
         self.model().appendRow([item])
-        # self.setItemWidget(item, svg_widget)
-
         self.scrollToBottom()
 
 
@@ -453,49 +456,62 @@ class FormulaDelegate(QStyledItemDelegate):
         self.closeEditor.connect(self.close_editor)
 
     def paint(self, painter, option, index):
-
-        # model.layoutChanged.emit()
-        # if parent.state() == QAbstractItemView.State.EditingState and self.editing_index.row() == index.row():
         if option.state & QStyle.StateFlag.State_Editing:
             print('paint: called, State_Editing')
-            model = index.model()
-            #XXXmodel.layoutChanged.emit()
-            # self.sizeHintChanged.emit(index)
+
         rec = index.data(Qt.ItemDataRole.UserRole)
-        # renderer = self.renderer
         if rec is not None and rec.svg_data is not None:
             svg = rec.svg_data
-            # later we should check option.state and render differently if selected
             if option.state & QStyle.StateFlag.State_Selected:
                 bg_color = option.palette.highlight().color()
-                draw_color = option.palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText)
-                painter.setBrush(option.palette.highlightedText()) #seems to do nothing
-                painter.fillRect(QRectF(option.rect), bg_color)
-
             else:
-                bg_color = option.palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Base)
-                draw_color = option.palette.text().color() # this color is too light
-                #draw_color = QColor(QPalette.ColorRole.Text) # using hard coded Text color instead
-                painter.setBrush(option.palette.windowText()) # this seems to not affect SVG rendering
-                painter.fillRect(QRectF(option.rect), bg_color)
+                bg_color = option.palette.color(
+                    QPalette.ColorGroup.Active, QPalette.ColorRole.Base
+                )
+            painter.fillRect(QRectF(option.rect), bg_color)
 
-            logging.debug('bg_color.name(): {}'.format(bg_color.name()))
-            logging.debug('draw_color.name(): {}'.format(draw_color.name()))
+            parent = self.parent()
+            ras = getattr(parent, "svg_rasterizer", None)
+            rect = option.rect
+            logical = QSize(max(rect.width(), 1), max(rect.height(), 1))
+            dpr = painter.device().devicePixelRatioF() if painter.device() else 1.0
 
-            vpad = settings.value("display/verticalPadding", 200, type=int)
+            pm = None
+            if ras is not None:
+                pm = ras.get(svg, logical, dpr)
 
-            # this replace is dependent on the svg format.  Maybe we should transform it
-            # at the soruce so we can adjust it easily with bytes.format.
-            self.renderer.load(svg.replace(b'rgb(0%, 0%, 0%)', draw_color.name().encode()))
-            self.renderer.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-            height =  self.renderer.viewBox().height()
-            vpad = int(height * 0.1) # don't like this as a percent..
-            self.renderer.viewBox().adjusted(0, -vpad, 0, vpad)
-            self.renderer.setViewBox(QRectF(self.renderer.viewBox().adjusted(0, -vpad, 0, vpad)))
             painter.save()
-            self.renderer.render(painter, QRectF(option.rect))
+            if pm is not None and not pm.isNull():
+                # Chromium-accurate pixmap (may arrive async on first paint)
+                target = QRectF(rect)
+                # Center if pixmap aspect differs slightly from cell
+                dpr_pm = pm.devicePixelRatio() or 1.0
+                pm_logical = QSize(
+                    max(1, int(pm.width() / dpr_pm)),
+                    max(1, int(pm.height() / dpr_pm)),
+                )
+                scaled = pm_logical.scaled(logical, Qt.AspectRatioMode.KeepAspectRatio)
+                x = rect.x() + (rect.width() - scaled.width()) / 2
+                y = rect.y() + (rect.height() - scaled.height()) / 2
+                target = QRectF(x, y, scaled.width(), scaled.height())
+                painter.drawPixmap(target.toRect(), pm)
+            else:
+                # Cache miss or no rasterizer: brief QSvg fallback (may show the
+                # known overline artifacts until Chromium pixmap arrives).
+                draw_color = option.palette.color(
+                    QPalette.ColorGroup.Active, QPalette.ColorRole.Text
+                )
+                if option.state & QStyle.StateFlag.State_Selected:
+                    draw_color = option.palette.color(
+                        QPalette.ColorGroup.Active,
+                        QPalette.ColorRole.HighlightedText,
+                    )
+                self.renderer.load(
+                    svg.replace(b"rgb(0%, 0%, 0%)", draw_color.name().encode())
+                )
+                self.renderer.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+                self.renderer.render(painter, QRectF(rect))
             painter.restore()
-
         else:
             return super().paint(painter, option, index)
 
