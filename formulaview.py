@@ -384,13 +384,21 @@ class FormulaView(QListView):
                 # self.formula_page.setHtml(html.format(formula=formula), QUrl('file://'))
 
     def save_as_text(self, filename):
-        with open(filename, 'wt') as f:
-            for item in [self.item(i) for i in range(self.count())]:
+        # FormulaView is a QListView + QStandardItemModel, not a QListWidget.
+        # self.item() / self.count() do not exist; use the model instead.
+        model = self.model()
+        with open(filename, 'wt', encoding='utf-8') as f:
+            for i in range(model.rowCount()):
+                item = model.item(i)
+                if item is None:
+                    continue
                 formula = item.text()
+                if not formula or not str(formula).strip():
+                    continue
                 f.write(r'\[' + formula + r'\]\n')
 
     def load_from_text(self, filename):
-        with open(filename, 'rt') as f:
+        with open(filename, 'rt', encoding='utf-8') as f:
             formula_list = f.read().split(r'\]\n\[')
             if len(formula_list) > 0:
                 formula_list[0] = formula_list[0].removeprefix(r'\[')
