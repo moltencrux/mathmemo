@@ -672,6 +672,12 @@ class FormulaDelegate(QStyledItemDelegate):
         editor.prepareFormulaData()
         formula, svg_data = editor.getFormulaData()
 
+        # Never write a blank formula into the model. Leave data as None so
+        # close_editor can drop a trailing empty row (Ctrl-Enter + click away).
+        text = (formula if formula is not None else editor.input_box.toPlainText() or '')
+        if not str(text).strip():
+            return
+
         rec = FormulaData(svg_data, None)
 
         model.setData(index, editor.formula)
@@ -691,6 +697,17 @@ class FormulaDelegate(QStyledItemDelegate):
         editor.delegate_processed = True
 
         index = self.get_index_from_editor(editor)
+        if index is None:
+            self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+            return
+
+        # Empty / whitespace-only: treat as abort, not commit. Stops a blank
+        # equation from remaining when the user Ctrl-Enters then clicks another
+        # item (closing the auto-opened next editor).
+        text = editor.input_box.toPlainText() if hasattr(editor, 'input_box') else ''
+        if not str(text).strip():
+            self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+            return
 
         # The commitData signal must be emitted when we've finished editing
         # and need to write our changed back to the model.
@@ -720,7 +737,10 @@ class FormulaDelegate(QStyledItemDelegate):
             # why would index be a none here? maybe it got called after disassociating?
 
             self.disassociate_editor_index(editor, index)
-            if model.rowCount() == index.row() + 1 and index.data() is None:
+            data = index.data()
+            is_blank = data is None or (isinstance(data, str) and not data.strip())
+            # Drop trailing blank row (auto-appended by Ctrl-Enter, then abandoned)
+            if model.rowCount() == index.row() + 1 and is_blank:
                 model.removeRow(index.row())
             else:
                 self.sizeHintChanged.emit(index)
