@@ -251,13 +251,27 @@ class SvgPixmapRasterizer(QObject):
 
     pixmapReady = pyqtSignal(bytes, QSize, float)
 
-    def __init__(self, parent: QWidget | None = None, cache_size: int = 96):
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        cache_size: int = 96,
+        padding_px: int = 6,
+    ):
         super().__init__(parent)
         self._cache_size = max(4, int(cache_size))
+        # Logical-pixel margin around the formula inside each cell pixmap
+        self._padding_px = max(0, int(padding_px))
         self._cache: OrderedDict[tuple, QPixmap] = OrderedDict()
         self._inflight: set[tuple] = set()
         self._queue: list[tuple] = []
         self._busy = False
+
+    def setPadding(self, padding_px: int) -> None:
+        """Logical pixels of whitespace around the formula (clears cache)."""
+        padding_px = max(0, int(padding_px))
+        if padding_px != self._padding_px:
+            self._padding_px = padding_px
+            self.clear()
 
     @staticmethod
     def cache_key(svg_bytes: bytes, logical_size: QSize, dpr: float) -> tuple:
@@ -376,21 +390,36 @@ class SvgPixmapRasterizer(QObject):
             )
             return None
         try:
+            from PyQt6.QtGui import QColor, QPainter
+
             pw = max(1, int(logical_size.width() * dpr))
             ph = max(1, int(logical_size.height() * dpr))
-            # Normalize ink so currentColor is not missing
+            pad = max(0, int(self._padding_px * dpr))
+            # Keep a little room so the formula never sits flush on the cell edge
+            inner_w = max(1, pw - 2 * pad)
+            inner_h = max(1, ph - 2 * pad)
+
             text = _force_dark_ink(
                 _strip_xml_decl(svg_bytes.decode("utf-8", errors="replace"))
             )
             png = svg2png(
                 bytestring=text.encode("utf-8"),
-                output_width=pw,
-                output_height=ph,
+                output_width=inner_w,
+                output_height=inner_h,
                 background_color="white",
             )
-            pm = QPixmap()
-            if not pm.loadFromData(png, "PNG"):
+            content = QPixmap()
+            if not content.loadFromData(png, "PNG"):
                 return None
+
+            # Full-size pixmap with white margin; center the formula content
+            pm = QPixmap(pw, ph)
+            pm.fill(QColor("white"))
+            painter = QPainter(pm)
+            x = (pw - content.width()) // 2
+            y = (ph - content.height()) // 2
+            painter.drawPixmap(x, y, content)
+            painter.end()
             return pm
         except Exception as exc:
             logging.warning("SvgPixmapRasterizer: svg2png failed: %s", exc)

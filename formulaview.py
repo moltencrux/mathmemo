@@ -828,27 +828,58 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         # Replace it with a plain placeholder now; create the real view later.
         self._replace_preview_with_placeholder()
 
+    @staticmethod
+    def _find_layout_index(widget):
+        """Return (layout, index) for *widget* in its parent layout tree.
+
+        parent.layout() is the *top-level* layout on the parent widget. The
+        preview lives in the nested verticalLayout, so indexOf(preview) on the
+        outer layout is -1 and a naive addWidget() appends below the whole
+        editor block (preview ends up under the input box).
+        """
+        if widget is None:
+            return None, -1
+        parent = widget.parentWidget()
+        if parent is None or parent.layout() is None:
+            return None, -1
+
+        def search(layout):
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item is None:
+                    continue
+                if item.widget() is widget:
+                    return layout, i
+                child = item.layout()
+                if child is not None:
+                    found = search(child)
+                    if found[0] is not None:
+                        return found
+            return None, -1
+
+        return search(parent.layout())
+
     def _replace_preview_with_placeholder(self):
         old = getattr(self, 'preview', None)
         if old is None:
             return
         logging.debug('FormulaEdit: replacing preview type=%s with placeholder',
                       type(old).__name__)
-        parent = old.parent()
-        layout = parent.layout() if parent is not None else None
-        placeholder = QLabel(parent or self)
+        parent = old.parentWidget() or self
+        layout, idx = self._find_layout_index(old)
+        placeholder = QLabel(parent)
         placeholder.setObjectName('preview_placeholder')
         placeholder.setMinimumHeight(old.minimumHeight() if old.minimumHeight() > 0 else 200)
         placeholder.setSizePolicy(old.sizePolicy())
         placeholder.setText('(preview loading…)')
         placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        if layout is not None:
-            idx = layout.indexOf(old)
-            if idx >= 0:
-                layout.removeWidget(old)
-                layout.insertWidget(idx, placeholder)
-            else:
-                layout.addWidget(placeholder)
+        if layout is not None and idx >= 0:
+            layout.removeWidget(old)
+            layout.insertWidget(idx, placeholder)
+        elif layout is not None:
+            layout.insertWidget(0, placeholder)  # designed order: preview above input
+        else:
+            logging.warning('FormulaEdit: no layout found for preview; order may be wrong')
         old.setParent(None)
         old.deleteLater()
         self.preview = placeholder
@@ -867,8 +898,8 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             return
 
         placeholder = getattr(self, 'preview', None)
-        parent = placeholder.parent() if placeholder is not None else self
-        layout = parent.layout() if parent is not None else None
+        parent = placeholder.parentWidget() if placeholder is not None else self
+        layout, idx = self._find_layout_index(placeholder)
         view = QWebEngineView(parent)
         view.setObjectName('preview')
         if placeholder is not None:
@@ -877,13 +908,14 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             view.setSizePolicy(placeholder.sizePolicy())
         else:
             view.setMinimumHeight(200)
-        if layout is not None and placeholder is not None:
-            idx = layout.indexOf(placeholder)
-            if idx >= 0:
-                layout.removeWidget(placeholder)
-                layout.insertWidget(idx, view)
-            else:
-                layout.addWidget(view)
+        if layout is not None and idx >= 0:
+            layout.removeWidget(placeholder)
+            layout.insertWidget(idx, view)
+        elif layout is not None:
+            layout.insertWidget(0, view)  # preview above input (matches .ui)
+        else:
+            logging.warning('FormulaEdit: no layout found when promoting preview')
+        if placeholder is not None:
             placeholder.setParent(None)
             placeholder.deleteLater()
         self.preview = view
