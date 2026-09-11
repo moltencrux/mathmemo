@@ -16,7 +16,10 @@ from PyQt6.QtGui import (QPalette, QImage, QPainter, QColor, QStandardItem, QSta
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtSvgWidgets import QSvgWidget
 from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
-from mjparse import gen_bracket_match_map, tokenize, auto_close_for_text
+from mjparse import (
+    gen_bracket_match_map, tokenize, auto_close_for_text,
+    skip_over_if_matches, tab_action,
+)
 from svgwebdisplay import SvgPixmapRasterizer, _force_dark_ink, _strip_xml_decl
 
 from texsyntax import MathJaxHighlighter
@@ -971,6 +974,11 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         bg_color = self.palette().color(QPalette.ColorGroup.Active, QPalette.ColorRole.Base)
         self.setStyleSheet(f"background-color: {bg_color.name()}")
         self.input_box.cursorPositionChanged.connect(self.cursor_position_changed)
+        # Pending auto-inserted closer: type-through while matching, Tab accepts,
+        # mismatch abandons and keeps the full closer ahead of the cursor.
+        # Keys: start (doc pos), text (full closer), consumed (matched prefix length)
+        self._pending_closer = None
+        self._pending_guard = False  # suppress clear while we move the cursor ourselves
         self.cursor_position_changed()
 
     def initUI(self):
@@ -1117,6 +1125,121 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
     def cursor_position_changed(self):
         # i think we should call rehighlight[Block] here
         self.highlight.update_cursor(self.input_box.textCursor())
+        # If the user moves the cursor away from the pending closer region,
+        # abandon type-through (the closer text stays in the document).
+        if self._pending_guard or self._pending_closer is None:
+            return
+        pos = self.input_box.textCursor().position()
+        start = self._pending_closer['start']
+        end = start + len(self._pending_closer['text'])
+        if not (start <= pos <= end):
+            self._pending_closer = None
+
+    def _set_pending_closer(self, start: int, text: str):
+        if text:
+            self._pending_closer = {'start': start, 'text': text, 'consumed': 0}
+        else:
+            self._pending_closer = None
+
+    def _clear_pending_closer(self):
+        self._pending_closer = None
+
+    def _move_cursor(self, pos: int):
+        self._pending_guard = True
+        try:
+            cursor = self.input_box.textCursor()
+            cursor.setPosition(pos)
+            self.input_box.setTextCursor(cursor)
+        finally:
+            self._pending_guard = False
+
+    def _accept_pending_closer(self):
+        """Jump past the entire pending closer (Tab accept)."""
+        p = self._pending_closer
+        if not p:
+            return False
+        self._move_cursor(p['start'] + len(p['text']))
+        self._clear_pending_closer()
+        return True
+
+    def _try_pending_type_through(self, typed: str) -> bool:
+        """Handle a key while a pending closer is active.
+
+        Matching prefix → advance into the closer (type-through).
+        Mismatch with nothing consumed yet → insert as content before the
+        closer; pending shifts right (and nested auto-close may apply).
+        Mismatch after a partial match → abandon: matched prefix becomes
+        real content and the full closer is pushed ahead of the cursor.
+
+        Returns True if the key was consumed.
+        """
+        p = self._pending_closer
+        if not p:
+            return False
+
+        remaining = p['text'][p['consumed']:]
+        if remaining.startswith(typed):
+            # Continue type-through
+            p['consumed'] += len(typed)
+            self._move_cursor(p['start'] + p['consumed'])
+            if p['consumed'] >= len(p['text']):
+                self._clear_pending_closer()
+            return True
+
+        matched = p['text'][:p['consumed']]
+        start = p['start']
+        closer = p['text']
+
+        # Still at the start of the closer: user is typing content before it.
+        if not matched:
+            preceding_before = self.input_box.toPlainText()[:start]
+            self._pending_guard = True
+            try:
+                cursor = self.input_box.textCursor()
+                cursor.setPosition(start)
+                cursor.insertText(typed)
+                self.input_box.setTextCursor(cursor)
+            finally:
+                self._pending_guard = False
+
+            result = auto_close_for_text(typed, preceding_before)
+            if result is not None:
+                # Nested auto-close (e.g. _ → _{}).  New pending is the nested
+                # closer; the outer closer remains in the document for Tab later.
+                self._pending_guard = True
+                try:
+                    cursor = self.input_box.textCursor()
+                    pos_after_typed = start + len(typed)
+                    cursor.setPosition(pos_after_typed)
+                    cursor.insertText(result.insert)
+                    new_pos = pos_after_typed + result.cursor_offset
+                    cursor.setPosition(new_pos)
+                    self.input_box.setTextCursor(cursor)
+                finally:
+                    self._pending_guard = False
+                after = result.insert[result.cursor_offset:]
+                self._set_pending_closer(new_pos, after)
+            else:
+                # Shift outer pending past the newly inserted content
+                p['start'] = start + len(typed)
+            return True
+
+        # Partial match then deviate: matched prefix becomes content, full
+        # closer is pushed ahead of the cursor.
+        replacement = matched + typed + closer
+        self._pending_guard = True
+        try:
+            cursor = self.input_box.textCursor()
+            cursor.setPosition(start)
+            cursor.setPosition(start + len(closer), cursor.MoveMode.KeepAnchor)
+            cursor.insertText(replacement)
+            cursor.setPosition(start + len(matched) + len(typed))
+            self.input_box.setTextCursor(cursor)
+        finally:
+            self._pending_guard = False
+
+        self._clear_pending_closer()
+        return True
 
     def updateIndexThing(self, index):
         self.index = index
@@ -1174,24 +1297,71 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                 # self.closeEditor.emit() # method of delegate
                 return False
 
-            # Syntax auto-close: when the user types an opener, insert the matching
-            # closer after the cursor and leave the cursor between them.
-            # Skip when a modifier other than Shift is held (so Ctrl/Alt shortcuts
-            # are not affected) and when there is a non-empty selection (overwrite).
-            if obj is self.input_box and not (event.modifiers() & ~Qt.KeyboardModifier.ShiftModifier):
-                typed = event.text()
-                if typed and not typed.isspace():
-                    cursor = self.input_box.textCursor()
-                    if not cursor.hasSelection():
-                        preceding = self.input_box.toPlainText()[:cursor.position()]
-                        closer = auto_close_for_text(typed, preceding)
-                        if closer is not None:
-                            # Insert typed char + closer, then move cursor between them
-                            cursor.insertText(typed + closer)
-                            for _ in closer:
-                                cursor.movePosition(cursor.MoveOperation.Left)
-                            self.input_box.setTextCursor(cursor)
-                            return True
+            if obj is not self.input_box:
+                return False
+
+            # Only handle plain typing / Tab (Shift ok for shifted symbols; no Ctrl/Alt)
+            if event.modifiers() & ~Qt.KeyboardModifier.ShiftModifier:
+                return False
+
+            cursor = self.input_box.textCursor()
+            if cursor.hasSelection():
+                self._clear_pending_closer()
+                return False
+
+            text = self.input_box.toPlainText()
+            pos = cursor.position()
+
+            # --- Tab -------------------------------------------------------
+            if event.key() == Qt.Key.Key_Tab:
+                # Prefer accepting an active pending closer (type-through region)
+                if self._pending_closer is not None:
+                    return self._accept_pending_closer()
+
+                action = tab_action(text, pos)
+                if action is None:
+                    return False  # nothing structural to do; let default handle Tab
+                if action.kind == 'skip':
+                    self._move_cursor(pos + action.n)
+                    return True
+                if action.kind == 'insert':
+                    cursor.insertText(action.text)
+                    self._move_cursor(pos + action.cursor_offset)
+                    # Newly inserted closer becomes pending so further Tab / type-through works
+                    if action.cursor_offset < len(action.text):
+                        self._set_pending_closer(
+                            pos + action.cursor_offset,
+                            action.text[action.cursor_offset:],
+                        )
+                    else:
+                        self._clear_pending_closer()
+                    return True
+                return False
+
+            typed = event.text()
+            if not typed or typed.isspace():
+                return False
+
+            # --- Pending closer type-through / abandon ---------------------
+            if self._pending_closer is not None:
+                return self._try_pending_type_through(typed)
+
+            # --- Auto-close: insert matching closer after the typed char ----
+            preceding = text[:pos]
+            result = auto_close_for_text(typed, preceding)
+            if result is not None:
+                self._pending_guard = True
+                try:
+                    cursor.insertText(typed + result.insert)
+                    new_pos = pos + len(typed) + result.cursor_offset
+                    cursor.setPosition(new_pos)
+                    self.input_box.setTextCursor(cursor)
+                finally:
+                    self._pending_guard = False
+                # Text after the cursor is the skippable pending closer
+                after = result.insert[result.cursor_offset:]
+                self._set_pending_closer(new_pos, after)
+                return True
 
         return False
         # return super().eventFilter(obj, event)

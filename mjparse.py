@@ -351,7 +351,9 @@ def build_structure(tokens: list[Token], up_to_pos: Optional[int] = None) -> Str
     treated as a standalone paren/bracket; it belongs to the left-right pair.
     """
     if up_to_pos is not None:
-        relevant = [t for t in tokens if t.pos <= up_to_pos]
+        # Tokens that *start* at the cursor are still ahead of it (the cursor
+        # sits before that character), so use strict < .
+        relevant = [t for t in tokens if t.pos < up_to_pos]
     else:
         relevant = list(tokens)
 
@@ -460,26 +462,34 @@ def matching_right_delim(left_delim: Optional[str]) -> str:
     return table.get(left_delim, left_delim)
 
 
-def auto_close_for_text(just_typed: str, preceding_text: str = '') -> Optional[str]:
-    """Return text that should be inserted *after* the cursor when *just_typed*
-    was entered, or None if nothing should be auto-inserted.
+@dataclass(frozen=True)
+class AutoCloseResult:
+    """What to insert after the typed character, and where to leave the cursor.
 
-    This is intentionally conservative and only handles the most useful cases:
+    *insert* is placed immediately after the just-typed character.
+    *cursor_offset* is the number of characters into *insert* where the cursor
+    should end up (0 = right before the inserted closer, i.e. between opener
+    and closer).
+    """
+    insert: str
+    cursor_offset: int = 0
 
-      '{'          -> '}'
-      '\\left('    -> '\\right)'   (and similarly for [, \\{, |, .)
-      '\\frac'     -> '{}{}' with cursor ideally in the first group
-      '^' / '_'    -> '{}'
 
-    *preceding_text* is the document text immediately before the just-typed
-    character(s); it is used to detect multi-character triggers such as
-    ``\\left(``.
+def auto_close_for_text(just_typed: str, preceding_text: str = '') -> Optional[AutoCloseResult]:
+    """Decide what closer (if any) to insert after *just_typed*.
+
+    Returns an :class:`AutoCloseResult`, or ``None`` if nothing should be
+    auto-inserted.  Cursor placement:
+
+      '{' / '\\left(' / '\\begin{...}'  → offset 0  (between opener and closer)
+      '^' / '_'                         → offset 1  (inside the ``{}``)
+      '\\frac' / multi-arg commands     → offset 1  (inside the first ``{}``)
     """
     # Single-character triggers
     if just_typed == '{':
-        return '}'
+        return AutoCloseResult('}', cursor_offset=0)
     if just_typed in ('^', '_'):
-        return '{}'
+        return AutoCloseResult('{}', cursor_offset=1)
 
     # Multi-character: look at a short window ending with just_typed
     window = (preceding_text + just_typed)[-20:]
@@ -488,61 +498,164 @@ def auto_close_for_text(just_typed: str, preceding_text: str = '') -> Optional[s
     m = re.search(r'\\left\s*([(\[{|.]|\\[{}|])$', window)
     if m:
         delim = m.group(1)
-        return r'\right' + matching_right_delim(delim)
+        return AutoCloseResult(r'\right' + matching_right_delim(delim), cursor_offset=0)
 
-    # \bigl / \Bigl / etc. — same idea, less common
+    # \bigl / \Bigl / etc.
     m = re.search(r'\\([bB]igg?[lr])\s*([(\[{|.]|\\[{}|])$', window)
     if m:
         # map \bigl -> \bigr, \Bigl -> \Bigr, ...
         size = m.group(1)
-        if size.endswith('l'):
-            right_size = size[:-1] + 'r'
-        else:
-            right_size = size
+        right_size = size[:-1] + 'r' if size.endswith('l') else size
         delim = m.group(2)
-        return '\\' + right_size + matching_right_delim(delim)
+        return AutoCloseResult('\\' + right_size + matching_right_delim(delim), cursor_offset=0)
 
     # \begin{envname}
     m = re.search(r'\\begin\{([A-Za-z*]+)\}$', window)
     if m:
         env = m.group(1)
-        return r'\end{' + env + '}'
+        return AutoCloseResult(r'\end{' + env + '}', cursor_offset=0)
 
-    # Commands with known arity — insert the braced argument slots
+    # Commands with known arity — insert braced argument slots
     m = re.search(r'(\\[A-Za-z]+)$', window)
     if m:
         cmd = m.group(1)
         arity = COMMAND_ARITY.get(cmd)
         if arity:
-            return '{}' * arity
+            # cursor inside the first {}
+            return AutoCloseResult('{}' * arity, cursor_offset=1)
 
     return None
 
 
 def expected_closers_at(tokens: list[Token], cursor_pos: int) -> list[str]:
-    """Return the list of expected closer strings from innermost to outermost
-    at *cursor_pos* (useful for a completion popup or Tab-to-close).
-    """
+    """Expected closer strings from innermost to outermost at *cursor_pos*."""
     structure = build_structure(tokens, up_to_pos=cursor_pos)
     return [ctx.expected_close for ctx in reversed(structure.open_stack)]
 
 
-def suggest_completion_prefix(tokens: list[Token], cursor_pos: int) -> Optional[str]:
-    """If the cursor is in the middle of (or right after) a command or
-    environment name, return the partial text for filtering a completion list.
+def text_after_matches(document_text: str, cursor_pos: int, candidate: str) -> bool:
+    """True if *candidate* is exactly the text starting at *cursor_pos*."""
+    if not candidate:
+        return False
+    return document_text.startswith(candidate, cursor_pos)
+
+
+# Multi-char closers that may have been auto-inserted.  Used both for the
+# start-of-closer check and for mid-closer continuation (type-through).
+_MULTI_CLOSER_RE = re.compile(
+    r'\\right[(\[{|.\)]?|'
+    r'\\end\{[A-Za-z*]*\}?|'
+    r'\\bigr[(\[{|.\)]?|'
+    r'\\Bigr[(\[{|.\)]?|'
+    r'\\biggr[(\[{|.\)]?|'
+    r'\\Biggr[(\[{|.\)]?'
+)
+
+
+def skip_over_if_matches(document_text: str, cursor_pos: int, typed: str) -> Optional[int]:
+    """If *typed* matches the text right after the cursor *and* the cursor is
+    at the start of or inside an auto-inserted closer, return how many
+    characters to advance; otherwise ``None``.
+
+    Enables both:
+      - typing ``}`` when ``}`` is already ahead → skip over it
+      - typing ``\\right)`` character-by-character when it was auto-inserted
     """
-    # Find the last token that starts at or before the cursor
+    if not typed:
+        return None
+    rest = document_text[cursor_pos:]
+    if not rest.startswith(typed):
+        return None
+
+    # Single-character closers
+    if rest[0] in '})]':
+        return len(typed)
+
+    # Multi-character closer: allow type-through at the start *or* in the middle.
+    # Look at a short window so we can detect that the cursor sits inside e.g.
+    # ``\right)`` even after the leading ``\`` has already been skipped.
+    lookback = 16
+    window_start = max(0, cursor_pos - lookback)
+    window = document_text[window_start: cursor_pos + 16]
+    for m in _MULTI_CLOSER_RE.finditer(window):
+        abs_start = window_start + m.start()
+        abs_end = abs_start + len(m.group(0))
+        if abs_start <= cursor_pos < abs_end:
+            return len(typed)
+
+    return None
+
+
+@dataclass(frozen=True)
+class TabAction:
+    """Result of a Tab key at a given cursor position.
+
+    *kind* is ``'skip'`` (move cursor forward by *n* chars) or ``'insert'``
+    (insert *text* and then move past it / to *cursor_offset*).
+    """
+    kind: str                 # 'skip' | 'insert'
+    text: str = ''            # for insert: the closer to insert
+    n: int = 0                # for skip: how many chars to advance
+    cursor_offset: int = 0    # for insert: where to leave cursor relative to text
+
+
+def tab_action(document_text: str, cursor_pos: int) -> Optional[TabAction]:
+    """Decide what Tab should do at *cursor_pos*.
+
+    Priority:
+      1. If we are sitting right before an empty ``{}`` argument slot that is
+         followed by another ``{}``, jump into the next slot
+         (``\\frac{|}{}`` → ``\\frac{}{|}``).
+      2. If the innermost expected closer is already right after the cursor,
+         skip over it.
+      3. Otherwise insert the innermost expected closer and move past it.
+      4. If nothing is open, do nothing (return ``None``).
+    """
+    # --- 1. Jump from one empty {} slot to the next (frac-style) ---
+    # Pattern: cursor is just after '{', next chars are '}{'  → skip '}{' and
+    # land inside the following group.  More generally: after '{...}|}{'
+    # when the current group is empty or the cursor is at its end.
+    rest = document_text[cursor_pos:]
+    # Sitting at  \frac{|{}{}}  or  \frac{x|}{}  → advance to next group
+    m = re.match(r'\}(\{\})', rest)
+    if m:
+        # move past '}' and the following '{', land inside next {}
+        return TabAction(kind='skip', n=2)  # skip '}{'
+
+    # --- 2 / 3. Structural closers ---
+    tokens = list(tokenize(document_text, ignore_mismatch=True))
+    closers = expected_closers_at(tokens, cursor_pos)
+    if not closers:
+        return None
+
+    innermost = closers[0]
+
+    # Already present right after cursor → skip over it
+    if text_after_matches(document_text, cursor_pos, innermost):
+        return TabAction(kind='skip', n=len(innermost))
+
+    # Also accept skip if a leading single-char closer is present
+    # (e.g. user is inside `{...|}` and Tab should jump over the `}`)
+    if rest and rest[0] in '})]':
+        # only if that char is a prefix of the expected closer, or is itself a closer
+        if innermost.startswith(rest[0]) or rest[0] in '})]':
+            return TabAction(kind='skip', n=1)
+
+    # Insert the expected closer
+    return TabAction(kind='insert', text=innermost, cursor_offset=len(innermost))
+
+
+def suggest_completion_prefix(tokens: list[Token], cursor_pos: int) -> Optional[str]:
+    """If the cursor is in the middle of a command, return the partial text
+    for filtering a completion list.
+    """
     candidates = [t for t in tokens if t.pos < cursor_pos]
     if not candidates:
         return None
     last = candidates[-1]
     end = last.pos + len(last.text)
     if last.type == MJTokenType.COMMAND and last.pos < cursor_pos <= end:
-        # partial command: "\fr" etc.
         return last.text[: cursor_pos - last.pos]
-    if last.type == MJTokenType.VARIABLE:
-        # possibly inside \begin{mat...}
-        return None  # could be extended later
     return None
 
 
