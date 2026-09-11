@@ -1,3 +1,4 @@
+import json
 import logging, sys, os
 from functools import partial
 from enum import Enum, StrEnum
@@ -384,8 +385,15 @@ class FormulaView(QListView):
                 # self.formula_page.setHtml(html.format(formula=formula), QUrl('file://'))
 
     def save_as_text(self, filename):
+        """Save formulas as NDJSON (one JSON object per line).
+
+        Each line is: {"tex": "<formula>"}. Newlines and special characters
+        inside the formula are escaped by json.dumps. For a terminal-friendly
+        dump of raw TeX only::
+
+            jq -r '.tex' session.ndjson
+        """
         # FormulaView is a QListView + QStandardItemModel, not a QListWidget.
-        # self.item() / self.count() do not exist; use the model instead.
         model = self.model()
         with open(filename, 'wt', encoding='utf-8') as f:
             for i in range(model.rowCount()):
@@ -395,17 +403,55 @@ class FormulaView(QListView):
                 formula = item.text()
                 if not formula or not str(formula).strip():
                     continue
-                f.write(r'\[' + formula + r'\]\n')
+                record = {'tex': formula}
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
     def load_from_text(self, filename):
+        """Load formulas from an NDJSON file (or legacy \\[...\\] text format).
+
+        Preferred format: one JSON object per line with a \"tex\" key.
+        Legacy files that use \\[formula\\] per line (or concatenated) are still
+        accepted so old sessions keep opening.
+        """
+        # FIXME: should we clear existing items first, or always append?
         with open(filename, 'rt', encoding='utf-8') as f:
-            formula_list = f.read().split(r'\]\n\[')
-            if len(formula_list) > 0:
-                formula_list[0] = formula_list[0].removeprefix(r'\[')
-                formula_list[-1] = formula_list[-1].removesuffix(r'\]\n')
+            content = f.read()
+
+        if not content.strip():
+            return
+
+        # Heuristic: NDJSON if the first non-empty line looks like a JSON object
+        first_line = next((ln.strip() for ln in content.splitlines() if ln.strip()), '')
+        if first_line.startswith('{'):
+            for line_no, line in enumerate(content.splitlines(), start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as e:
+                    logging.warning('load_from_text: skip bad NDJSON line %s: %s', line_no, e)
+                    continue
+                if isinstance(record, dict):
+                    formula = record.get('tex') or record.get('formula') or ''
+                elif isinstance(record, str):
+                    formula = record
+                else:
+                    logging.warning('load_from_text: skip non-object line %s', line_no)
+                    continue
+                if formula and str(formula).strip():
+                    self.append_formula(formula)
+            return
+
+        # Legacy: \[formula\] records
+        formula_list = content.split(r'\]\n\[')
+        if formula_list:
+            formula_list[0] = formula_list[0].removeprefix(r'\[')
+            formula_list[-1] = formula_list[-1].removesuffix(r'\]\n')
+            formula_list[-1] = formula_list[-1].removesuffix(r'\]')
         for formula in formula_list:
-            # FIXME should we clear this first? or do we append to what is currently loaded?
-            self.append_formula(formula)
+            if formula and str(formula).strip():
+                self.append_formula(formula)
 
     def append_formula(self, formula:str):
         if formula:
