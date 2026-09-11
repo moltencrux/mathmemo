@@ -16,7 +16,7 @@ from PyQt6.QtGui import (QPalette, QImage, QPainter, QColor, QStandardItem, QSta
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtSvgWidgets import QSvgWidget
 from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
-from mjparse import gen_bracket_match_map, tokenize
+from mjparse import gen_bracket_match_map, tokenize, auto_close_for_text
 from svgwebdisplay import SvgPixmapRasterizer, _force_dark_ink, _strip_xml_decl
 
 from texsyntax import MathJaxHighlighter
@@ -1173,16 +1173,25 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                 # maybe just send a signal or sth to remove the item, and that it was abandoned
                 # self.closeEditor.emit() # method of delegate
                 return False
-            # elif event.key() == Qt.Key.Key_U:
-            #     self.size_hint_inc()
-            #     return False
-            # elif event.key() == Qt.Key.Key_D:
-            #     self.size_hint_dec()
-            #     return False
 
-        # elif event.type() == QEvent.Type.FocusOut:  # must be some other event
-        #     self.editingAborted.emit()
-        #     return True
+            # Syntax auto-close: when the user types an opener, insert the matching
+            # closer after the cursor and leave the cursor between them.
+            # Skip when a modifier other than Shift is held (so Ctrl/Alt shortcuts
+            # are not affected) and when there is a non-empty selection (overwrite).
+            if obj is self.input_box and not (event.modifiers() & ~Qt.KeyboardModifier.ShiftModifier):
+                typed = event.text()
+                if typed and not typed.isspace():
+                    cursor = self.input_box.textCursor()
+                    if not cursor.hasSelection():
+                        preceding = self.input_box.toPlainText()[:cursor.position()]
+                        closer = auto_close_for_text(typed, preceding)
+                        if closer is not None:
+                            # Insert typed char + closer, then move cursor between them
+                            cursor.insertText(typed + closer)
+                            for _ in closer:
+                                cursor.movePosition(cursor.MoveOperation.Left)
+                            self.input_box.setTextCursor(cursor)
+                            return True
 
         return False
         # return super().eventFilter(obj, event)
