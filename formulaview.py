@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (QAbstractItemDelegate, QListView,
                              QSizePolicy, QAbstractItemView, QListWidgetItem, QStyle,
                              QStyledItemDelegate, QWidget, QLineEdit, QApplication, QLabel)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QDir, QEvent, QEventLoop, Qt, QTimer,
+from PyQt6.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QByteArray, QBuffer, QDir,
+                          QEvent, QEventLoop, QIODevice, Qt, QTimer,
                           QMimeData, QMutex, QMutexLocker, QObject, QPoint, QRectF, QSettings,
                           QSize, QTemporaryFile, QUrl, QWaitCondition, QPersistentModelIndex,
                           QModelIndex)
@@ -16,7 +17,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtSvgWidgets import QSvgWidget
 from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJaxRenderer
 from mjparse import gen_bracket_match_map, tokenize
-from svgwebdisplay import SvgPixmapRasterizer
+from svgwebdisplay import SvgPixmapRasterizer, _force_dark_ink, _strip_xml_decl
 
 from texsyntax import MathJaxHighlighter
 
@@ -220,68 +221,153 @@ class FormulaView(QListView):
 
     @register
     def copySvg(self, row):
+        """
+        Put the formula SVG on the clipboard for Anki and other SVG-aware apps.
 
+        Anki's paste path prefers certain content types in order (HTML, URLs,
+        text, then custom image types). Offering text/plain or a file URL makes
+        Anki treat the paste as text/link instead of SVG media — so this method
+        intentionally exposes *only* SVG image MIME types, matching the form
+        that previously worked with Anki:
+
+            image/svg  (Anki)
+            image/svg+xml  (standard; Inkscape, etc.)
+
+        currentColor is forced to red (historical Anki-friendly ink). Use the
+        Image copy option for Discord / Google Images / other raster paste
+        targets; they do not accept SVG from the clipboard.
+        """
         item = self.model().item(row)
+        if item is None:
+            return
         rec = item.data(Qt.ItemDataRole.UserRole)
-        svg = rec.svg_data
+        if rec is None or not rec.svg_data:
+            return
 
-        # create a QMimeData object and set the SVG data
-        mime_data = QMimeData()
-        # mime_data.setData("image/svg+xml", self.images[index])
-        mime_data.setData("image/svg", svg.replace(b'currentColor', b'red')) # works for Anki
+        # Same substitution the pre-fix version used for Anki
+        svg_bytes = rec.svg_data.replace(b'currentColor', b'red')
 
-        # mime_data.setData("image/svg+xml", self.images[index].replace(b'currentColor', b'red'))
-        # mime_data.setData("image/svg+xml"
-        # mime_data.setData("image/svg"
+        mime = QMimeData()
+        # Primary for Anki — do not also set text or URLs (Anki will prefer those)
+        mime.setData('image/svg', svg_bytes)
+        mime.setData('image/svg+xml', svg_bytes)
 
-        # get the system clipboard and set the QMimeData object
-        self.clipboard.setMimeData(mime_data)
-
-        if self.clipboard.mimeData().hasImage():
-            ...
+        self.clipboard.setMimeData(mime)
+        logging.debug('copySvg called row=%s bytes=%s', row, len(svg_bytes))
 
     @register
     def copySvgText(self, row):
-
+        """Copy the SVG markup as plain text (normalized dark ink)."""
         item = self.model().item(row)
+        if item is None:
+            return
         rec = item.data(Qt.ItemDataRole.UserRole)
-        svg = rec.svg_data
-        QApplication.clipboard().setText(svg.decode())
+        if rec is None or not rec.svg_data:
+            return
+        text = _force_dark_ink(
+            _strip_xml_decl(rec.svg_data.decode('utf-8', errors='replace'))
+        )
+        QApplication.clipboard().setText(text)
+        logging.debug('copySvgText called row=%s', row)
 
 
     @register
     def copyImage(self, row):
-
+        """Copy formula as PNG using the same Cairo rasterizer as on-screen display."""
         image = self.genPngByRow(row)
-        self.clipboard.setImage(image)
-        logging.debug(f'copyImage called {row}')
+        if image is None or image.isNull():
+            logging.warning('copyImage: failed to rasterize row %s', row)
+            return
+
+        # Prefer image/png so Discord, Google Images, browsers, etc. accept the paste.
+        # Also attach Qt image data for native Qt consumers.
+        mime = QMimeData()
+        ba = QByteArray()
+        buf = QBuffer(ba)
+        buf.open(QIODevice.OpenModeFlag.WriteOnly)
+        image.save(buf, 'PNG')
+        buf.close()
+        mime.setData('image/png', ba)
+        mime.setImageData(image)
+        self.clipboard.setMimeData(mime)
+        logging.debug('copyImage called row=%s size=%sx%s', row, image.width(), image.height())
 
     def genPngByRow(self, row):
+        """
+        Rasterize the formula at row via SvgPixmapRasterizer (Cairo), matching
+        what the list delegate shows. Returns a QImage, or a null QImage on failure.
 
-        rfactor = settings.value("copyImage/reductionFactor", 12.0, type=float)
-        # eventually i want to make this a more intutive setting, something related to
-        # dpi  # i think a ratio of 12 may be very close to 600dpi
-        # so then a ratio of 6 would be 1200 dpi, 24 would be 300, 48: 150
-
+        Size is derived from the SVG's defaultSize the same way sizeHint does
+        (defaultSize * 4), then optionally scaled by copyImage/reductionFactor
+        (default 12 ≈ baseline; lower → larger image). Output is rendered at
+        devicePixelRatio 2 for crisp paste targets.
+        """
         item = self.model().item(row)
+        if item is None:
+            return QImage()
         rec = item.data(Qt.ItemDataRole.UserRole)
+        if rec is None or not rec.svg_data:
+            return QImage()
         svg = rec.svg_data
 
-        renderer = QSvgRenderer()
-        renderer.load(svg.replace(b'currentColor', b'black'))
-        image = QImage(renderer.defaultSize() / rfactor, QImage.Format.Format_ARGB32)
-        #image = QImage(renderer.defaultSize() / rfactor, QImage.Format.Format_RGB666)
-        #image.fill(0x00000000)  # fill the image with transparent pixels
-        image.fill(Qt.GlobalColor.white)
-        painter = QPainter(image)
-        renderer.render(painter)
-        painter.end()
+        # Intrinsic size basis — same as FormulaDelegate.sizeHint
+        probe = QSvgRenderer()
+        probe.load(svg)
+        if not probe.isValid():
+            logging.warning('genPngByRow: invalid SVG for row %s', row)
+            return QImage()
+        base = probe.defaultSize()
+        if not base.isValid() or base.width() <= 0 or base.height() <= 0:
+            base = QSize(400, 80)
+
+        # display path uses defaultSize * 4; keep that as the logical baseline
+        logical = QSize(max(1, base.width() * 4), max(1, base.height() * 4))
+
+        # Historical setting: lower rfactor → higher resolution (was "dpi-ish")
+        rfactor = settings.value('copyImage/reductionFactor', 12.0, type=float)
+        rfactor = max(1.0, float(rfactor))
+        # At rfactor=12 produce the baseline; rfactor=6 ≈ 2× linear pixels, etc.
+        scale = 12.0 / rfactor
+        if abs(scale - 1.0) > 1e-6:
+            logical = QSize(
+                max(1, int(logical.width() * scale)),
+                max(1, int(logical.height() * scale)),
+            )
+
+        # Cap extremely wide formulas so clipboard payloads stay reasonable
+        max_w = 2400
+        if logical.width() > max_w:
+            factor = max_w / logical.width()
+            logical = QSize(max_w, max(1, int(logical.height() * factor)))
+
+        dpr = 2.0  # crisp output for web / high-DPI paste targets
+        ras = getattr(self, 'svg_rasterizer', None)
+        if ras is None:
+            logging.error('genPngByRow: no svg_rasterizer on FormulaView')
+            return QImage()
+
+        pm = ras.get_sync(svg, logical, dpr)
+        if pm is None or pm.isNull():
+            logging.warning('genPngByRow: Cairo rasterizer returned nothing for row %s', row)
+            return QImage()
+
+        # Physical pixel buffer (dpr already applied inside the pixmap)
+        image = pm.toImage()
+        if image.format() not in (
+            QImage.Format.Format_ARGB32,
+            QImage.Format.Format_ARGB32_Premultiplied,
+            QImage.Format.Format_RGB32,
+        ):
+            image = image.convertToFormat(QImage.Format.Format_ARGB32)
         return image
 
     @register
     def copyImageTmp(self, row):
 
         image = self.genPngByRow(row)
+        if image is None or image.isNull():
+            logging.warning('copyImageTmp: failed to rasterize row %s', row)
+            return
         tmp_imgfile = QTemporaryFile(os.path.join(QDir.tempPath(), 'XXXXXXXX.png'))
         self.tempfiles.append(tmp_imgfile)
         image.save(tmp_imgfile)
@@ -460,7 +546,7 @@ class FormulaView(QListView):
 
     # This is the menu structure for building copy methods menus. It gets fed into build_menu
     copy_menu_struct = (('Preferred Default', copyDefault),
-                         ('Image via (Qt)', copyImage),
+                         ('Image', copyImage),
                          ('Equation Text', copyEquation),
                          ('Image from temporary file', copyImageTmp),
                          ('SVG', copySvg),
