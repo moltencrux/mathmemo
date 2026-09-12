@@ -1135,9 +1135,14 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         if not (start <= pos <= end):
             self._pending_closer = None
 
-    def _set_pending_closer(self, start: int, text: str):
+    def _set_pending_closer(self, start: int, text: str, optional: bool = False):
         if text:
-            self._pending_closer = {'start': start, 'text': text, 'consumed': 0}
+            self._pending_closer = {
+                'start': start,
+                'text': text,
+                'consumed': 0,
+                'optional': optional,
+            }
         else:
             self._pending_closer = None
 
@@ -1154,10 +1159,30 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             self._pending_guard = False
 
     def _accept_pending_closer(self):
-        """Jump past the entire pending closer (Tab accept)."""
+        """Tab over a pending closer.
+
+        Optional ``{}`` scaffolding (from ``^`` / ``_``) is accepted one brace
+        at a time: first Tab enters ``{|}``, second Tab exits past ``}``.
+        Required closers (``\\right)``, ``}``, …) are accepted in full.
+        """
         p = self._pending_closer
         if not p:
             return False
+        remaining = p['text'][p['consumed']:]
+        # Stepwise enter/exit for optional {} (or any pending that is exactly {})
+        if remaining.startswith('{') and (p.get('optional') or p['text'] == '{}'):
+            p['consumed'] += 1  # consume the '{'
+            self._move_cursor(p['start'] + p['consumed'])
+            if p['consumed'] >= len(p['text']):
+                self._clear_pending_closer()
+            return True
+        if remaining.startswith('}') and p.get('optional'):
+            p['consumed'] += 1
+            self._move_cursor(p['start'] + p['consumed'])
+            if p['consumed'] >= len(p['text']):
+                self._clear_pending_closer()
+            return True
+        # Default: jump past the entire remaining closer
         self._move_cursor(p['start'] + len(p['text']))
         self._clear_pending_closer()
         return True
@@ -1192,6 +1217,38 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
         # Still at the start of the closer: user is typing content before it.
         if not matched:
+            # Optional {} from ^/_ : discard scaffolding so \sum_i / x^2 work
+            if p.get('optional') and closer == '{}':
+                preceding_before = self.input_box.toPlainText()[:start]
+                self._pending_guard = True
+                try:
+                    cursor = self.input_box.textCursor()
+                    cursor.setPosition(start)
+                    cursor.setPosition(start + len(closer), cursor.MoveMode.KeepAnchor)
+                    cursor.insertText(typed)  # replaces {} with the typed char
+                    self.input_box.setTextCursor(cursor)
+                finally:
+                    self._pending_guard = False
+                self._clear_pending_closer()
+                # Nested auto-close on the replacement char is unlikely here
+                # (we just discarded braces), but allow it for consistency.
+                result = auto_close_for_text(typed, preceding_before)
+                if result is not None:
+                    pos_after = start + len(typed)
+                    self._pending_guard = True
+                    try:
+                        cursor = self.input_box.textCursor()
+                        cursor.setPosition(pos_after)
+                        cursor.insertText(result.insert)
+                        new_pos = pos_after + result.cursor_offset
+                        cursor.setPosition(new_pos)
+                        self.input_box.setTextCursor(cursor)
+                    finally:
+                        self._pending_guard = False
+                    after = result.insert[result.cursor_offset:]
+                    self._set_pending_closer(new_pos, after, optional=result.optional)
+                return True
+
             preceding_before = self.input_box.toPlainText()[:start]
             self._pending_guard = True
             try:
@@ -1218,14 +1275,31 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                 finally:
                     self._pending_guard = False
                 after = result.insert[result.cursor_offset:]
-                self._set_pending_closer(new_pos, after)
+                self._set_pending_closer(new_pos, after, optional=result.optional)
             else:
                 # Shift outer pending past the newly inserted content
                 p['start'] = start + len(typed)
             return True
 
-        # Partial match then deviate: matched prefix becomes content, full
-        # closer is pushed ahead of the cursor.
+        # Inside braces (remaining is just the closing '}') — insert content
+        # and keep the closer pending after the new text.
+        if remaining in ('}', ')', ']'):
+            insert_at = start + p['consumed']
+            self._pending_guard = True
+            try:
+                cursor = self.input_box.textCursor()
+                cursor.setPosition(insert_at)
+                cursor.insertText(typed)
+                self.input_box.setTextCursor(cursor)
+            finally:
+                self._pending_guard = False
+            p['start'] = insert_at + len(typed)
+            p['text'] = remaining
+            p['consumed'] = 0
+            return True
+
+        # Partial match then deviate (e.g. ``\`` of ``\right)`` then ``s``):
+        # matched prefix becomes content, full closer is pushed ahead.
         replacement = matched + typed + closer
         self._pending_guard = True
         try:
@@ -1360,7 +1434,7 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                     self._pending_guard = False
                 # Text after the cursor is the skippable pending closer
                 after = result.insert[result.cursor_offset:]
-                self._set_pending_closer(new_pos, after)
+                self._set_pending_closer(new_pos, after, optional=result.optional)
                 return True
 
         return False

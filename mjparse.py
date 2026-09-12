@@ -1,9 +1,14 @@
-from parsimonious.grammar import Grammar
-from parsimonious.nodes import NodeVisitor
 from typing import NamedTuple, Optional
 from enum import StrEnum, auto
 from dataclasses import dataclass, field
 import re
+
+try:
+    from parsimonious.grammar import Grammar
+    from parsimonious.nodes import NodeVisitor
+except ImportError:  # optional — only needed for the legacy grammar visitor
+    Grammar = None
+    NodeVisitor = object
 
 mathjax_grammar_def = r'''
 expr = (triode / diode / monode / env_node)*
@@ -470,9 +475,12 @@ class AutoCloseResult:
     *cursor_offset* is the number of characters into *insert* where the cursor
     should end up (0 = right before the inserted closer, i.e. between opener
     and closer).
+    *optional* marks scaffolding that should be discarded if the user types
+    ordinary content instead of entering the braces (used for ``^`` / ``_``).
     """
     insert: str
     cursor_offset: int = 0
+    optional: bool = False
 
 
 def auto_close_for_text(just_typed: str, preceding_text: str = '') -> Optional[AutoCloseResult]:
@@ -482,14 +490,16 @@ def auto_close_for_text(just_typed: str, preceding_text: str = '') -> Optional[A
     auto-inserted.  Cursor placement:
 
       '{' / '\\left(' / '\\begin{...}'  → offset 0  (between opener and closer)
-      '^' / '_'                         → offset 1  (inside the ``{}``)
+      '^' / '_'                         → offset 0  (``{}`` ahead; bare ``_i`` / ``^2`` stay easy)
       '\\frac' / multi-arg commands     → offset 1  (inside the first ``{}``)
     """
     # Single-character triggers
     if just_typed == '{':
         return AutoCloseResult('}', cursor_offset=0)
     if just_typed in ('^', '_'):
-        return AutoCloseResult('{}', cursor_offset=1)
+        # Leave cursor *before* the braces so ``\sum_i`` / ``x^2`` remain natural.
+        # Tab steps into ``{|}`` then past ``}``.  Typing content discards ``{}``.
+        return AutoCloseResult('{}', cursor_offset=0, optional=True)
 
     # Multi-character: look at a short window ending with just_typed
     window = (preceding_text + just_typed)[-20:]
