@@ -38,7 +38,7 @@ comment = ~r"%[^\r\n]*"
 
 
 class MathJaxVisitorTest(NodeVisitor):
-    grammar = Grammar(mathjax_grammar_def)
+    grammar = Grammar(mathjax_grammar_def) if Grammar is not None else None
     def __init__(self):
         super().__init__()
 
@@ -309,6 +309,132 @@ COMMAND_ARITY = {
     r'\overset': 2,
     r'\underset': 2,
 }
+
+# Common MathJax / LaTeX commands offered by the completion popup.
+# Keep the leading backslash; matching is prefix-based and case-insensitive.
+MATHJAX_COMMANDS = sorted(set([
+    # structure / layout
+    r'\frac', r'\dfrac', r'\tfrac', r'\binom', r'\sqrt', r'\left', r'\right',
+    r'\big', r'\Big', r'\bigg', r'\Bigg', r'\bigl', r'\bigr', r'\Bigl', r'\Bigr',
+    r'\begin', r'\end', r'\middle',
+    # operators / large ops
+    r'\sum', r'\prod', r'\coprod', r'\int', r'\iint', r'\iiint', r'\oint',
+    r'\bigcup', r'\bigcap', r'\bigoplus', r'\bigotimes', r'\bigvee', r'\bigwedge',
+    r'\lim', r'\limsup', r'\liminf', r'\max', r'\min', r'\sup', r'\inf',
+    r'\arg', r'\deg', r'\det', r'\dim', r'\ker', r'\hom', r'\Pr',
+    # relations
+    r'\leq', r'\geq', r'\neq', r'\approx', r'\equiv', r'\sim', r'\simeq',
+    r'\cong', r'\propto', r'\prec', r'\succ', r'\preceq', r'\succeq',
+    r'\subset', r'\supset', r'\subseteq', r'\supseteq', r'\in', r'\ni', r'\notin',
+    r'\perp', r'\parallel', r'\mid', r'\nmid',
+    # arrows
+    r'\to', r'\rightarrow', r'\leftarrow', r'\leftrightarrow',
+    r'\Rightarrow', r'\Leftarrow', r'\Leftrightarrow',
+    r'\mapsto', r'\longmapsto', r'\uparrow', r'\downarrow',
+    r'\hookrightarrow', r'\hookleftarrow',
+    # Greek (lowercase)
+    r'\alpha', r'\beta', r'\gamma', r'\delta', r'\epsilon', r'\varepsilon',
+    r'\zeta', r'\eta', r'\theta', r'\vartheta', r'\iota', r'\kappa',
+    r'\lambda', r'\mu', r'\nu', r'\xi', r'\pi', r'\varpi', r'\rho', r'\varrho',
+    r'\sigma', r'\varsigma', r'\tau', r'\upsilon', r'\phi', r'\varphi',
+    r'\chi', r'\psi', r'\omega',
+    # Greek (uppercase)
+    r'\Gamma', r'\Delta', r'\Theta', r'\Lambda', r'\Xi', r'\Pi',
+    r'\Sigma', r'\Upsilon', r'\Phi', r'\Psi', r'\Omega',
+    # dots / spacing / accents
+    r'\cdot', r'\cdots', r'\ldots', r'\vdots', r'\ddots',
+    r'\quad', r'\qquad', r'\,', r'\;', r'\!',
+    r'\hat', r'\widehat', r'\bar', r'\overline', r'\underline',
+    r'\vec', r'\tilde', r'\widetilde', r'\dot', r'\ddot', r'\acute', r'\grave',
+    # symbols
+    r'\infty', r'\partial', r'\nabla', r'\hbar', r'\ell', r'\aleph',
+    r'\emptyset', r'\varnothing', r'\exists', r'\forall', r'\neg', r'\lnot',
+    r'\land', r'\lor', r'\wedge', r'\vee', r'\cap', r'\cup',
+    r'\oplus', r'\otimes', r'\odot', r'\oslash', r'\ominus',
+    r'\times', r'\div', r'\pm', r'\mp', r'\ast', r'\star', r'\circ',
+    r'\angle', r'\triangle', r'\square', r'\diamond', r'\bullet',
+    r'\Re', r'\Im', r'\wp',
+    # functions / text-like
+    r'\sin', r'\cos', r'\tan', r'\cot', r'\sec', r'\csc',
+    r'\arcsin', r'\arccos', r'\arctan',
+    r'\sinh', r'\cosh', r'\tanh', r'\coth',
+    r'\log', r'\ln', r'\exp', r'\gcd',
+    r'\operatorname', r'\text', r'\textbf', r'\textit', r'\textrm',
+    r'\mathrm', r'\mathbf', r'\mathit', r'\mathsf', r'\mathtt',
+    r'\mathbb', r'\mathcal', r'\mathfrak', r'\mathscr',
+    # environments (used after \begin{ / \end{)
+    r'\begin{matrix}', r'\begin{pmatrix}', r'\begin{bmatrix}', r'\begin{vmatrix}',
+    r'\begin{Vmatrix}', r'\begin{align}', r'\begin{aligned}', r'\begin{cases}',
+    r'\begin{array}',
+    # misc useful
+    r'\displaystyle', r'\textstyle', r'\scriptstyle',
+    r'\overset', r'\underset', r'\overbrace', r'\underbrace',
+    r'\binom', r'\dfrac', r'\tfrac',
+    r'\color', r'\mathbf', r'\boldsymbol',
+]), key=lambda s: s.lower())
+
+# Environment names offered after \begin{ or \end{
+MATHJAX_ENVIRONMENTS = sorted([
+    'matrix', 'pmatrix', 'bmatrix', 'vmatrix', 'Vmatrix',
+    'align', 'aligned', 'cases', 'array', 'gather', 'multline',
+    'equation', 'eqnarray',
+])
+
+
+def command_prefix_at(document_text: str, cursor_pos: int) -> Optional[tuple[str, int]]:
+    """If the cursor is in (or right after) a ``\\command`` prefix, return
+    ``(prefix, start_pos)`` where *prefix* includes the leading backslash and
+    *start_pos* is the document offset of that backslash.
+
+    Also handles ``\\begin{partialenv`` / ``\\end{partialenv`` so environment
+    names can be completed.
+    """
+    if cursor_pos <= 0 or cursor_pos > len(document_text):
+        return None
+    # Walk left for [A-Za-z] then optional {env letters after \begin/\end
+    i = cursor_pos - 1
+    # Environment name inside \begin{...} or \end{...}
+    if i >= 0 and (document_text[i].isalpha() or document_text[i] == '{'):
+        j = i
+        while j >= 0 and document_text[j].isalpha():
+            j -= 1
+        if j >= 0 and document_text[j] == '{':
+            # look for \begin or \end before the {
+            k = j - 1
+            while k >= 0 and document_text[k].isspace():
+                k -= 1
+            for cmd in (r'\begin', r'\end'):
+                if k >= len(cmd) - 1 and document_text[k - len(cmd) + 1: k + 1] == cmd:
+                    prefix = document_text[k - len(cmd) + 1: cursor_pos]
+                    return prefix, k - len(cmd) + 1
+    # Ordinary \command
+    j = i
+    while j >= 0 and document_text[j].isalpha():
+        j -= 1
+    if j >= 0 and document_text[j] == '\\':
+        # exclude \\ (linebreak) — still allow completion starting at second \
+        prefix = document_text[j: cursor_pos]
+        if len(prefix) >= 1:
+            return prefix, j
+    return None
+
+
+def completion_candidates(prefix: str) -> list[str]:
+    """Return command / environment strings that start with *prefix* (case-insensitive)."""
+    if not prefix.startswith('\\'):
+        return []
+    pl = prefix.lower()
+    # \begin{xxx or \end{xxx → environment names
+    for head in (r'\begin{', r'\end{'):
+        if pl.startswith(head.lower()) or head.lower().startswith(pl):
+            env_prefix = prefix[len(head):] if len(prefix) >= len(head) else ''
+            # If still typing \beg… offer the full \begin{...} forms from MATHJAX_COMMANDS
+            if len(prefix) < len(head):
+                return [c for c in MATHJAX_COMMANDS if c.lower().startswith(pl)]
+            envs = [e for e in MATHJAX_ENVIRONMENTS
+                    if e.lower().startswith(env_prefix.lower())]
+            return [head + e + '}' for e in envs]
+    return [c for c in MATHJAX_COMMANDS if c.lower().startswith(pl)]
 
 
 def _peek_env_name(tokens: list[Token], start_index: int) -> Optional[str]:

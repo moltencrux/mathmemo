@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -O
-import logging, sys
+import logging, sys, os
 from PyQt6.QtCore import pyqtSlot, QCoreApplication, QSettings, Qt
 
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QDialog,

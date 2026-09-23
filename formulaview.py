@@ -1,16 +1,17 @@
 import json
-import logging, sys, os
+import logging, sys, os, re
 from functools import partial
 from enum import Enum, StrEnum
 from PyQt6.QtWidgets import (QAbstractItemDelegate, QListView,
                              QSizePolicy, QAbstractItemView, QListWidgetItem, QStyle,
-                             QStyledItemDelegate, QWidget, QLineEdit, QApplication, QLabel)
+                             QStyledItemDelegate, QWidget, QLineEdit, QApplication, QLabel,
+                             QCompleter)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import (pyqtSignal, pyqtSlot, QAbstractItemModel, QByteArray, QBuffer, QDir,
                           QEvent, QEventLoop, QIODevice, Qt, QTimer,
                           QMimeData, QMutex, QMutexLocker, QObject, QPoint, QRectF, QSettings,
                           QSize, QTemporaryFile, QUrl, QWaitCondition, QPersistentModelIndex,
-                          QModelIndex)
+                          QModelIndex, QStringListModel)
 from PyQt6.QtGui import (QPalette, QImage, QPainter, QColor, QStandardItem, QStandardItemModel,
                          QAction, QActionGroup, QPixmap)
 from PyQt6.QtSvg import QSvgRenderer
@@ -19,6 +20,7 @@ from mjrender import javascript_v3_extract, mj_enqueue, gen_render_html, MathJax
 from mjparse import (
     gen_bracket_match_map, tokenize, auto_close_for_text,
     skip_over_if_matches, tab_action,
+    command_prefix_at, completion_candidates, MATHJAX_COMMANDS,
 )
 from svgwebdisplay import SvgPixmapRasterizer, _force_dark_ink, _strip_xml_decl
 
@@ -974,12 +976,156 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         bg_color = self.palette().color(QPalette.ColorGroup.Active, QPalette.ColorRole.Base)
         self.setStyleSheet(f"background-color: {bg_color.name()}")
         self.input_box.cursorPositionChanged.connect(self.cursor_position_changed)
-        # Pending auto-inserted closer: type-through while matching, Tab accepts,
-        # mismatch abandons and keeps the full closer ahead of the cursor.
-        # Keys: start (doc pos), text (full closer), consumed (matched prefix length)
+        # Pending closer for type-through at the cursor (one active region).
+        # Keys: start, text, consumed, optional, opener_start, opener_end
         self._pending_closer = None
+        # All tentative auto-inserted closers linked to their openers.  If the
+        # opener span is deleted/damaged, the closer is removed from the document.
+        self._tentatives = []  # list of dicts
         self._pending_guard = False  # suppress clear while we move the cursor ourselves
+        self.input_box.document().contentsChange.connect(self._on_contents_change)
+        self._setup_completer()
         self.cursor_position_changed()
+
+    def _setup_completer(self):
+        """IDE-style popup completion for \\commands and \\begin{env} names."""
+        self.input_box.setTabChangesFocus(False)  # Tab stays in the editor / completer
+        self._completer = QCompleter(MATHJAX_COMMANDS, self.input_box)
+        self._completer.setWidget(self.input_box)
+        self._completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._completer.setFilterMode(Qt.MatchFlag.MatchStartsWith)
+        self._completer.setMaxVisibleItems(12)
+        # activated fires on mouse click and when we emit it from keyboard accept
+        self._completer.activated.connect(self._insert_completion)
+        self._completion_start = None
+        self._completion_prefix = None
+        self.input_box.textChanged.connect(self._update_completer)
+        # Also catch Tab/Enter on the popup itself (mouse focus can move there)
+        self._completer.popup().installEventFilter(self)
+
+    def _completer_popup_visible(self) -> bool:
+        popup = getattr(self, '_completer', None)
+        if popup is None:
+            return False
+        p = self._completer.popup()
+        return p is not None and p.isVisible()
+
+    def _activate_current_completion(self) -> bool:
+        """Accept the highlighted completer item. Returns True if something was inserted."""
+        if not hasattr(self, '_completer'):
+            return False
+        popup = self._completer.popup()
+        model = self._completer.completionModel()
+        if model is None or model.rowCount() == 0:
+            return False
+        idx = popup.currentIndex() if popup is not None else None
+        if idx is None or not idx.isValid():
+            idx = model.index(0, 0)
+        completion = model.data(idx, Qt.ItemDataRole.DisplayRole)
+        if not completion:
+            completion = self._completer.currentCompletion()
+        if not completion:
+            return False
+        if popup is not None:
+            popup.hide()
+        self._insert_completion(str(completion))
+        return True
+
+    def _update_completer(self):
+        if self._pending_guard:
+            return
+        text = self.input_box.toPlainText()
+        pos = self.input_box.textCursor().position()
+        info = command_prefix_at(text, pos)
+        if info is None:
+            self._completer.popup().hide()
+            self._completion_start = None
+            self._completion_prefix = None
+            return
+        prefix, start = info
+        # Don't pop up on a lone backslash with no following letter yet
+        if prefix == '\\':
+            self._completer.popup().hide()
+            self._completion_start = None
+            self._completion_prefix = None
+            return
+        candidates = completion_candidates(prefix)
+        if not candidates:
+            self._completer.popup().hide()
+            self._completion_start = None
+            self._completion_prefix = None
+            return
+        # Avoid a popup that only restates the exact command already typed
+        if len(candidates) == 1 and candidates[0].lower() == prefix.lower():
+            self._completer.popup().hide()
+            self._completion_start = None
+            self._completion_prefix = None
+            return
+        self._completer.setModel(QStringListModel(candidates, self._completer))
+        self._completer.setCompletionPrefix('')  # model is already filtered
+        self._completion_start = start
+        self._completion_prefix = prefix
+        cr = self.input_box.cursorRect()
+        popup = self._completer.popup()
+        cr.setWidth(
+            popup.sizeHintForColumn(0)
+            + popup.verticalScrollBar().sizeHint().width()
+            + 8
+        )
+        self._completer.complete(cr)
+        first = self._completer.completionModel().index(0, 0)
+        if first.isValid():
+            popup.setCurrentIndex(first)
+            self._completer.setCurrentRow(0)
+
+    def _insert_completion(self, completion: str):
+        """Replace the current \\prefix with the chosen completion."""
+        if not completion:
+            return
+        cursor = self.input_box.textCursor()
+        pos = cursor.position()
+        text = self.input_box.toPlainText()
+        start = self._completion_start
+        if start is None:
+            info = command_prefix_at(text, pos)
+            if info is None:
+                return
+            _, start = info
+        # Clamp start
+        start = max(0, min(start, pos))
+        self._pending_guard = True
+        try:
+            cursor.setPosition(start)
+            cursor.setPosition(pos, cursor.MoveMode.KeepAnchor)
+            cursor.insertText(completion)
+            self.input_box.setTextCursor(cursor)
+        finally:
+            self._pending_guard = False
+        self._completion_start = None
+        self._completion_prefix = None
+        # Run auto-close on the completed command if applicable (e.g. \frac → {}{})
+        if completion:
+            preceding = self.input_box.toPlainText()[: cursor.position() - len(completion)]
+            last = completion[-1]
+            result = auto_close_for_text(last, preceding + completion[:-1])
+            if result is not None:
+                pos_after = cursor.position()
+                opener_s = pos_after - len(completion)
+                opener_e = pos_after
+                self._pending_guard = True
+                try:
+                    cursor.insertText(result.insert)
+                    new_pos = pos_after + result.cursor_offset
+                    cursor.setPosition(new_pos)
+                    self.input_box.setTextCursor(cursor)
+                finally:
+                    self._pending_guard = False
+                after = result.insert[result.cursor_offset:]
+                self._set_pending_closer(
+                    new_pos, after, optional=result.optional,
+                    opener_start=opener_s, opener_end=opener_e,
+                )
 
     def initUI(self):
         self.setupUi(self)
@@ -1122,32 +1268,172 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         if not self._web_preview_ready:
             QTimer.singleShot(50, self._init_renderer)
 
+    def _adopt_pending_at(self, pos: int) -> bool:
+        """If a tentative closer covers *pos*, make it the active pending closer."""
+        # Prefer a tentative that *starts* at the cursor (next closer to accept)
+        for t in self._tentatives:
+            if t['start'] == pos:
+                self._pending_closer = t
+                t['consumed'] = 0
+                return True
+        for t in self._tentatives:
+            end = t['start'] + len(t['text'])
+            if t['start'] < pos < end:
+                self._pending_closer = t
+                t['consumed'] = pos - t['start']
+                return True
+        # Document-based fallback: text at pos looks like a multi-char closer
+        text = self.input_box.toPlainText()
+        rest = text[pos:]
+        if rest.startswith(r'\right') or rest.startswith(r'\end{') or rest.startswith(r'\bigr'):
+            # Reconstruct a transient pending so type-through works
+            # Find length of the closer token sitting here
+            m = re.match(
+                r'(\\right[(\[{|.\)]?|\\end\{[A-Za-z]*\}?|\\bigr[(\[{|.\)]?)',
+                rest,
+            )
+            if m:
+                entry = {
+                    'start': pos,
+                    'text': m.group(0),
+                    'consumed': 0,
+                    'optional': False,
+                    'opener_start': pos,  # unknown — don't auto-retract
+                    'opener_end': pos,
+                }
+                self._pending_closer = entry
+                # Don't append to tentatives without a real opener link
+                return True
+        return False
+
     def cursor_position_changed(self):
         # i think we should call rehighlight[Block] here
         self.highlight.update_cursor(self.input_box.textCursor())
-        # If the user moves the cursor away from the pending closer region,
-        # abandon type-through (the closer text stays in the document).
-        if self._pending_guard or self._pending_closer is None:
+        # Keep pending in sync with cursor: if we moved away from the active
+        # closer, clear it (closer text stays).  If we land on another
+        # tentative closer, adopt it so type-through / skip still works.
+        if self._pending_guard:
             return
         pos = self.input_box.textCursor().position()
-        start = self._pending_closer['start']
-        end = start + len(self._pending_closer['text'])
-        if not (start <= pos <= end):
+        if self._pending_closer is not None:
+            start = self._pending_closer['start']
+            end = start + len(self._pending_closer['text'])
+            if start <= pos <= end:
+                return
             self._pending_closer = None
+        self._adopt_pending_at(pos)
 
-    def _set_pending_closer(self, start: int, text: str, optional: bool = False):
+    def _set_pending_closer(self, start: int, text: str, optional: bool = False,
+                            opener_start: int = None, opener_end: int = None):
         if text:
-            self._pending_closer = {
+            entry = {
                 'start': start,
                 'text': text,
                 'consumed': 0,
                 'optional': optional,
+                'opener_start': opener_start if opener_start is not None else start,
+                'opener_end': opener_end if opener_end is not None else start,
             }
+            self._pending_closer = entry
+            # Same object so type-through mutations stay in sync with tentatives
+            self._tentatives.append(entry)
         else:
             self._pending_closer = None
 
     def _clear_pending_closer(self):
         self._pending_closer = None
+
+    def _opener_span_for(self, typed: str, preceding: str, pos: int) -> tuple:
+        """Return (opener_start, opener_end) for the trigger that caused auto-close.
+
+        *pos* is the cursor position *before* inserting *typed*.  The returned
+        end is exclusive and refers to positions *after* *typed* would be
+        inserted (i.e. end == pos + len(typed) for a single-char trigger).
+        """
+        window = preceding + typed
+        # \left( / \bigl( / ...
+        m = re.search(r'(\\(?:left|[bB]igg?[lr])\s*[(\[{|.]|\\[{}|])$', window)
+        if m:
+            return pos - (len(m.group(1)) - len(typed)), pos + len(typed)
+        # \begin{env}
+        m = re.search(r'(\\begin\{[A-Za-z*]+\})$', window)
+        if m:
+            return pos - (len(m.group(1)) - len(typed)), pos + len(typed)
+        # multi-arg command like \frac
+        m = re.search(r'(\\[A-Za-z]+)$', window)
+        if m and m.group(1) in (
+            r'\frac', r'\dfrac', r'\tfrac', r'\binom', r'\dbinom', r'\sqrt',
+            r'\overline', r'\underline', r'\mathbf', r'\mathrm', r'\mathit',
+            r'\mathsf', r'\mathtt', r'\mathbb', r'\mathcal', r'\mathfrak',
+            r'\text', r'\textrm', r'\textbf', r'\textit', r'\operatorname',
+            r'\overset', r'\underset',
+        ):
+            return pos - (len(m.group(1)) - len(typed)), pos + len(typed)
+        # single char: {  ^  _
+        return pos, pos + len(typed)
+
+    def _on_contents_change(self, position: int, chars_removed: int, chars_added: int):
+        """Adjust tentative spans after edits; retract closers whose openers died.
+
+        Position tracking always runs.  Closer retraction is skipped while
+        ``_pending_guard`` is set (we are driving the edit ourselves).
+        """
+        if not self._tentatives:
+            return
+
+        def adjust(point: int) -> int:
+            if point >= position + chars_removed:
+                return point - chars_removed + chars_added
+            if point >= position:
+                return position
+            return point
+
+        # Always keep spans in sync with the document
+        for t in self._tentatives:
+            t['opener_start'] = adjust(t['opener_start'])
+            t['opener_end'] = max(adjust(t['opener_end']), t['opener_start'])
+            t['start'] = adjust(t['start'])
+
+        if self._pending_guard:
+            return
+
+        survivors = []
+        to_delete = []  # (closer_start, closer_text)
+        for t in self._tentatives:
+            opener_hit = (chars_removed > 0 and
+                          position < t['opener_end'] and
+                          position + chars_removed > t['opener_start'])
+            if opener_hit:
+                to_delete.append((t['start'], t['text']))
+                continue
+            survivors.append(t)
+
+        self._tentatives = survivors
+
+        # Drop active pending if its tentative was retracted
+        if self._pending_closer is not None:
+            p = self._pending_closer
+            if p not in self._tentatives:
+                self._pending_closer = None
+
+        if not to_delete:
+            return
+
+        self._pending_guard = True
+        try:
+            for cl_s, cl_text in sorted(to_delete, key=lambda x: -x[0]):
+                doc_text = self.input_box.toPlainText()
+                cl_len = len(cl_text)
+                if cl_s < 0 or cl_s + cl_len > len(doc_text):
+                    continue
+                if doc_text[cl_s:cl_s + cl_len] != cl_text:
+                    continue
+                cursor = self.input_box.textCursor()
+                cursor.setPosition(cl_s)
+                cursor.setPosition(cl_s + cl_len, cursor.MoveMode.KeepAnchor)
+                cursor.removeSelectedText()
+        finally:
+            self._pending_guard = False
 
     def _move_cursor(self, pos: int):
         self._pending_guard = True
@@ -1157,6 +1443,13 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             self.input_box.setTextCursor(cursor)
         finally:
             self._pending_guard = False
+
+    def _commit_pending_closer(self, p=None):
+        """Mark a pending closer as accepted (no longer retracted with opener)."""
+        p = p or self._pending_closer
+        if p is not None:
+            self._tentatives = [t for t in self._tentatives if t is not p]
+        self._clear_pending_closer()
 
     def _accept_pending_closer(self):
         """Tab over a pending closer.
@@ -1174,23 +1467,24 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             p['consumed'] += 1  # consume the '{'
             self._move_cursor(p['start'] + p['consumed'])
             if p['consumed'] >= len(p['text']):
-                self._clear_pending_closer()
+                self._commit_pending_closer(p)
             return True
         if remaining.startswith('}') and p.get('optional'):
             p['consumed'] += 1
             self._move_cursor(p['start'] + p['consumed'])
             if p['consumed'] >= len(p['text']):
-                self._clear_pending_closer()
+                self._commit_pending_closer(p)
             return True
-        # Default: jump past the entire remaining closer
+        # Default: jump past the entire remaining closer — commit it
         self._move_cursor(p['start'] + len(p['text']))
-        self._clear_pending_closer()
+        self._commit_pending_closer(p)
         return True
 
     def _try_pending_type_through(self, typed: str) -> bool:
         """Handle a key while a pending closer is active.
 
         Matching prefix → advance into the closer (type-through).
+        Optional scaffolding + content at start → drop ``{}`` and insert content.
         Mismatch with nothing consumed yet → insert as content before the
         closer; pending shifts right (and nested auto-close may apply).
         Mismatch after a partial match → abandon: matched prefix becomes
@@ -1208,7 +1502,7 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             p['consumed'] += len(typed)
             self._move_cursor(p['start'] + p['consumed'])
             if p['consumed'] >= len(p['text']):
-                self._clear_pending_closer()
+                self._commit_pending_closer(p)
             return True
 
         matched = p['text'][:p['consumed']]
@@ -1230,11 +1524,16 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                 finally:
                     self._pending_guard = False
                 self._clear_pending_closer()
+                self._tentatives = [
+                    t for t in self._tentatives
+                    if not (t.get('text') == closer and t.get('start') == start)
+                ]
                 # Nested auto-close on the replacement char is unlikely here
                 # (we just discarded braces), but allow it for consistency.
                 result = auto_close_for_text(typed, preceding_before)
                 if result is not None:
                     pos_after = start + len(typed)
+                    opener_s, opener_e = self._opener_span_for(typed, preceding_before, start)
                     self._pending_guard = True
                     try:
                         cursor = self.input_box.textCursor()
@@ -1246,7 +1545,10 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                     finally:
                         self._pending_guard = False
                     after = result.insert[result.cursor_offset:]
-                    self._set_pending_closer(new_pos, after, optional=result.optional)
+                    self._set_pending_closer(
+                        new_pos, after, optional=result.optional,
+                        opener_start=opener_s, opener_end=opener_e,
+                    )
                 return True
 
             preceding_before = self.input_box.toPlainText()[:start]
@@ -1358,18 +1660,46 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
     def eventFilter(self, obj, event):
 
-        if event.type() == QEvent.Type.KeyPress: # and obj is self:
+        if event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            popup = self._completer.popup() if hasattr(self, '_completer') else None
+            popup_visible = popup is not None and popup.isVisible()
 
-            if event.key() in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+            # --- Completer: handle Tab/Enter/Esc whether focus is on the
+            # editor or on the popup list itself ---------------------------
+            if popup_visible:
+                if key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab,
+                           Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                    # Ctrl+Enter still finishes editing
+                    if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and (
+                            event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+                        popup.hide()
+                        self.editingFinished.emit()
+                        return True
+                    if self._activate_current_completion():
+                        return True
+                    popup.hide()
+                    return True
+                if key == Qt.Key.Key_Escape:
+                    popup.hide()
+                    self.input_box.setFocus(Qt.FocusReason.OtherFocusReason)
+                    return True
+                # Arrow navigation: if the key arrived on the editor, forward
+                # it to the popup so the highlight moves.
+                if key in (Qt.Key.Key_Up, Qt.Key.Key_Down,
+                           Qt.Key.Key_PageUp, Qt.Key.Key_PageDown):
+                    if obj is self.input_box:
+                        QApplication.sendEvent(popup, event)
+                        return True
+                    return False  # popup handles its own arrows
+
+            # Ctrl+Enter finishes editing (when completer is not open)
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                     self.editingFinished.emit()
                     return True
-                elif event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                     return True
-            elif event.key() == Qt.Key.Key_Escape:
-                # maybe just send a signal or sth to remove the item, and that it was abandoned
-                # self.closeEditor.emit() # method of delegate
-                return False
 
             if obj is not self.input_box:
                 return False
@@ -1386,22 +1716,20 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             text = self.input_box.toPlainText()
             pos = cursor.position()
 
-            # --- Tab -------------------------------------------------------
-            if event.key() == Qt.Key.Key_Tab:
-                # Prefer accepting an active pending closer (type-through region)
+            # --- Tab (no completer popup) ----------------------------------
+            if key == Qt.Key.Key_Tab:
                 if self._pending_closer is not None:
                     return self._accept_pending_closer()
 
                 action = tab_action(text, pos)
                 if action is None:
-                    return False  # nothing structural to do; let default handle Tab
+                    return False
                 if action.kind == 'skip':
                     self._move_cursor(pos + action.n)
                     return True
                 if action.kind == 'insert':
                     cursor.insertText(action.text)
                     self._move_cursor(pos + action.cursor_offset)
-                    # Newly inserted closer becomes pending so further Tab / type-through works
                     if action.cursor_offset < len(action.text):
                         self._set_pending_closer(
                             pos + action.cursor_offset,
@@ -1416,14 +1744,45 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
             if not typed or typed.isspace():
                 return False
 
+            # Non-command characters dismiss the completion popup so they can
+            # trigger auto-close (e.g. ``\left`` + ``(`` → ``\right)``).
+            if popup_visible and not typed.isalpha():
+                popup.hide()
+
+            # --- Re-bind pending from tentatives at the cursor ---------------
+            # After closing an inner group (e.g. ``\sqrt{…}``), the outer
+            # ``\right)`` is still in the document / tentatives, but
+            # ``_pending_closer`` may be None.  Re-adopt so type-through works.
+            if self._pending_closer is None:
+                self._adopt_pending_at(pos)
+
             # --- Pending closer type-through / abandon ---------------------
             if self._pending_closer is not None:
                 return self._try_pending_type_through(typed)
+
+            # --- Skip over an already-present closer -----------------------
+            if typed in '})]' and pos < len(text) and text[pos] == typed:
+                self._move_cursor(pos + 1)
+                # If a tentative closer starts here, commit/drop it
+                for t in list(self._tentatives):
+                    if t['start'] == pos and t['text'][:1] == typed:
+                        self._tentatives = [x for x in self._tentatives if x is not t]
+                        break
+                return True
+            # Multi-char closer still ahead (e.g. ``\right)``) even without pending
+            skip_n = skip_over_if_matches(text, pos, typed)
+            if skip_n is not None:
+                self._move_cursor(pos + skip_n)
+                return True
 
             # --- Auto-close: insert matching closer after the typed char ----
             preceding = text[:pos]
             result = auto_close_for_text(typed, preceding)
             if result is not None:
+                # Opener span covers the trigger that caused the insertion
+                # (e.g. "\left(" or "{" or "_").  Deleting any part of it
+                # retracts the tentative closer via contentsChange.
+                opener_start, opener_end = self._opener_span_for(typed, preceding, pos)
                 self._pending_guard = True
                 try:
                     cursor.insertText(typed + result.insert)
@@ -1432,9 +1791,12 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
                     self.input_box.setTextCursor(cursor)
                 finally:
                     self._pending_guard = False
-                # Text after the cursor is the skippable pending closer
                 after = result.insert[result.cursor_offset:]
-                self._set_pending_closer(new_pos, after, optional=result.optional)
+                self._set_pending_closer(
+                    new_pos, after, optional=result.optional,
+                    opener_start=opener_start,
+                    opener_end=opener_end,
+                )
                 return True
 
         return False
