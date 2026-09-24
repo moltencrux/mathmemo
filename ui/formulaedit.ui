@@ -35,7 +35,7 @@
       <number>0</number>
      </property>
      <item>
-      <widget class="QWebEngineView" name="preview">
+      <widget class="QWebEngineView" name="preview" native="true">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
          <horstretch>1</horstretch>
@@ -48,7 +48,7 @@
          <height>200</height>
         </size>
        </property>
-       <property name="url">
+       <property name="url" stdset="0">
         <url>
          <string>about:blank</string>
         </url>
@@ -63,10 +63,10 @@
        <item>
         <widget class="QFrame" name="input_button_frame">
          <property name="frameShape">
-          <enum>QFrame::StyledPanel</enum>
+          <enum>QFrame::Shape::StyledPanel</enum>
          </property>
          <property name="frameShadow">
-          <enum>QFrame::Raised</enum>
+          <enum>QFrame::Shadow::Raised</enum>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_4">
           <property name="spacing">
@@ -103,7 +103,7 @@
               <normaloff>:/icons/user-trash-symbolic.svg</normaloff>:/icons/user-trash-symbolic.svg</iconset>
             </property>
             <property name="popupMode">
-             <enum>QToolButton::InstantPopup</enum>
+             <enum>QToolButton::ToolButtonPopupMode::InstantPopup</enum>
             </property>
            </widget>
           </item>
@@ -145,7 +145,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QPlainTextEdit" name="input_box">
+        <widget class="CompletionTextEdit" name="input_box">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
            <horstretch>0</horstretch>
@@ -168,6 +168,11 @@
    <class>QWebEngineView</class>
    <extends>QWidget</extends>
    <header location="global">QtWebEngineWidgets/QWebEngineView</header>
+  </customwidget>
+  <customwidget>
+   <class>CompletionTextEdit</class>
+   <extends>QPlainTextEdit</extends>
+   <header>completion_edit.h</header>
   </customwidget>
  </customwidgets>
  <resources>

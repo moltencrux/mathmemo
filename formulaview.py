@@ -25,6 +25,11 @@ from mjparse import (
 from svgwebdisplay import SvgPixmapRasterizer, _force_dark_ink, _strip_xml_decl
 
 from texsyntax import MathJaxHighlighter
+from completion_edit import (
+    CompletionTextEdit,
+    OPEN_CLOSE as COMPLETION_OPEN_CLOSE,
+    default_completion_words,
+)
 
 import matplotlib.pyplot as plt
 plt.rc('mathtext', fontset='cm')
@@ -962,6 +967,9 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         self.svg_data = None
         self.formula = None
         ###self.preview.setPage(self.mj_renderer)
+        # input_box is a promoted CompletionTextEdit from formulaedit.ui.
+        # Catalog / open-close map applied here (designer cannot pass them).
+        self._configure_completion_edit()
         self.input_box.textChanged.connect(self.updatePreview)
         # formulaProcessed is connected in _init_renderer after the page exists
         self.waitPreview = QMutex()
@@ -983,9 +991,21 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
         # opener span is deleted/damaged, the closer is removed from the document.
         self._tentatives = []  # list of dicts
         self._pending_guard = False  # suppress clear while we move the cursor ourselves
-        self.input_box.document().contentsChange.connect(self._on_contents_change)
-        self._setup_completer()
+        if not self._using_completion_edit():
+            self.input_box.document().contentsChange.connect(self._on_contents_change)
+            self._setup_completer()
         self.cursor_position_changed()
+
+    def _using_completion_edit(self) -> bool:
+        return isinstance(getattr(self, "input_box", None), CompletionTextEdit)
+
+    def _configure_completion_edit(self):
+        """Post-setupUi configuration for the promoted CompletionTextEdit."""
+        box = self.input_box
+        if not isinstance(box, CompletionTextEdit):
+            return
+        words = default_completion_words(MATHJAX_COMMANDS)
+        box.configure(words=words, open_close=COMPLETION_OPEN_CLOSE)
 
     def _setup_completer(self):
         """IDE-style popup completion for \\commands and \\begin{env} names."""
@@ -1662,6 +1682,26 @@ class FormulaEdit(QWidget, Ui_FormulaEdit):
 
         if event.type() == QEvent.Type.KeyPress:
             key = event.key()
+            # CompletionTextEdit owns Tab/completion/auto-close.  FormulaEdit
+            # only keeps Ctrl+Enter (commit) and Escape (abort when idle).
+            if self._using_completion_edit():
+                if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                    if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                        # Hide completer popup if open, then commit
+                        ce = self.input_box
+                        if getattr(ce, "completer", None) is not None:
+                            ce.completer.popup().hide()
+                        self.editingFinished.emit()
+                        return True
+                if key == Qt.Key.Key_Escape:
+                    ce = self.input_box
+                    popup = ce.completer.popup() if getattr(ce, "completer", None) else None
+                    if popup is not None and popup.isVisible():
+                        return False  # CompletionTextEdit dismisses popup
+                    self.editingAborted.emit()
+                    return True
+                return False
+
             popup = self._completer.popup() if hasattr(self, '_completer') else None
             popup_visible = popup is not None and popup.isVisible()
 
