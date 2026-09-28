@@ -1,0 +1,111 @@
+node = ws (expr ws)*
+# non-empty node
+ne_node = &any node
+expr = (triode / diode / monode)
+triode = ((monode sup monode sub monode) / (monode sub monode sup monode))
+diode = ((monode sup monode ) / (monode sub monode ))
+monode = (cseq / kernel / bkt_group / env_block / cmd_group)
+kernel = (cword / var / group )
+sup = ws "^" ws
+sub = ws "_" ws
+group = "{" node "}"
+bkt_group = left_bkt node right_bkt
+left_bkt = "\\left" ws bkt_delim
+right_bkt = "\\right" ws bkt_delim
+bkt_delim = "(" / ")" / "[" / "]" / "\\{" / "\\}" / "|" / "."
+# handle env parameters later
+env_block = "\\begin" ws "{" env_name "}" env_body "\\end" ws "{" env_name "}" 
+env_body = (node (("&" / "\\\\") node))
+env_name = letter+ "*"{,1}
+cmd_group = (sqrt_cmd)
+# command sequence, that is sometimes treated as a unit
+cseq = (cword / frac_cmd)
+cword = "\\" ( known_cmd / unknown_cmd )
+var = (csym / letter / digit / sym)
+csym = "\\" !letter any
+known_cmd = ( "sqrt" / "binom" / "sum" / "int" ) !letter
+# unknown_cmd = !known_cmd letter+ !letter
+unknown_cmd = !known_cmd "alpha" !letter
+any = ~"."s
+letter = ~"[A-Z]"i
+digit = ~"[0-9]"
+sym = "+" / "-" / "*" / "/" / "=" / "(" / ")" / "[" / "]" / "|" / "`" / "$" / "'" / "," / "." / ":" / ";" / "@" / "?"
+ws = (ws_char / comment)*
+ws_char = ~r"\s+"
+comment = ~r"%[^\n]*\n?"
+
+# kernel = (frac_cmd / sqrt_cmd / cword / var / group)
+frac_cmd = "\\frac" !letter ws kernel ws kernel
+
+sqrt_cmd = "\\sqrt" ws (sqrt_with_opt / sqrt_plain)
+
+
+
+# Matches \sqrt[3]{x} or \sqrt[3] x
+sqrt_with_opt = opt_content ws (kernel / cseq)
+
+# Matches \sqrt{x} or \sqrt x
+# sqrt_plain = ( cseq / kernel ) 
+sqrt_plain = (!"[" kernel)
+
+# The secret sauce: consume expressions *only* if the next token is NOT a closing bracket
+opt_content = "[" ws (!"]" (expr ws))* "]"
+
+
+
+
+
+
+
+
+cword = "\\" ( known_cmd / unknown_cmd ) !letter
+known_cmd = ( "binom" / "sum" / "int" ) !letter  # removed sqrt and frac since they have custom rules
+unknown_cmd = "alpha"
+
+
+
+
+# "tokens" cword, csym, digit, sym, letter
+# so \over can take:  node \over node
+# \frac (cword/csym/var/group) x
+# \sqrt (cseq)
+# \overline (cword/csym/var/group)
+
+# cseq = cword / cseq
+# comment = ~r"%[^\r\n]*"
+
+# so... we defined csym (commadn sequence), that would amtch any.. but really our node
+# can't just match any cmd seq.. it should match only the subset of valid ones
+# shoudl that be lookahead?
+# \sqrt \frac a b^2_2    #< puts 2s on the outside
+# \sqrt {\frac a b}^2_2    #< puts 2s on the inside of the radical 
+# \frac a {\sqrt b}  # < {} required
+
+# so does \sqrt expect a group?
+# \over seems kinda similar.. consumes everyting after...but even more greedy
+# bizarre, can't do \sqrt \binom n k
+# latex seems to handle it.  
+
+# expr = (triode / diode / monode / env_node)*
+# sub = subscript monode
+# subscript = "_"
+# power = superscript monode
+# superscript = "^"
+# triode = (node sub power) / (node power sub)
+# diode = (node power) / (node sub)
+# node = monode / env_node
+# monode = null ((token) / ("{" null expr null  "}") / (left_bkt null expr null right_bkt)) null
+# env_node = null "\\begin ws {" environment "}" expr "\\end ws {" environment "}" null
+# left_bkt = "\\left" ws bkt_delim
+# right_bkt = "\\right" ws bkt_delim
+# bkt_delim = "(" / ")" / "[" / "]" / "\\{" / "\\}" / "|" / "."
+# environment = "bmatrix" / "matrix" / "align"
+# command = "\\" (letter+ / "\\" / " " / "%" / "#" / "&" / "_" / "{" / "}")
+# token = variable / symbols / digit / command
+# variable = ~"[A-Za-z]"
+# letter = ~"[A-Za-z]"
+# symbols = "+" / "-" / "*" / "/" / "=" / "(" / ")" / "[" / "]" / "|" / "`" / "$" / "'" / "," / "." / ":" / ";" / "@" / "?"
+# digit = "0" / "1" / "2" / "3" / "4" / "5" / "6" / "7" / "8" / "9"
+# null = (comment / ws)*
+# ws = ~"[ \\t\\n\\r]*"
+# comment = ~r"%[^\r\n]*"
