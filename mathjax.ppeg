@@ -1,10 +1,8 @@
-node = ws (expr ws)*
-# non-empty node
-ne_node = &any node
+node = ws ((expr ws)* (infix_cmd ws (expr ws)?)*)
 expr = (triode / diode / monode)
 triode = ((monode sup monode sub monode) / (monode sub monode sup monode))
 diode = ((monode sup monode ) / (monode sub monode ))
-monode = (cseq / kernel / bkt_group / env_block / cmd_group)
+monode = (cmd_group / cseq / kernel / bkt_group / env_block )
 kernel = (cword / var / group )
 sup = ws "^" ws
 sub = ws "_" ws
@@ -17,15 +15,16 @@ bkt_delim = "(" / ")" / "[" / "]" / "\\{" / "\\}" / "|" / "."
 env_block = "\\begin" ws "{" env_name "}" env_body "\\end" ws "{" env_name "}" 
 env_body = (node (("&" / "\\\\") node))
 env_name = letter+ "*"{,1}
-cmd_group = (sqrt_cmd)
+cmd_group = (sqrt_cmd / unary_cmd)
 # command sequence, that is sometimes treated as a unit
 cseq = (cword / frac_cmd)
-cword = "\\" ( known_cmd / unknown_cmd )
+cword = "\\" (( known_cmd / noarg_cmd / unknown_cmd ) !letter)
 var = (csym / letter / digit / sym)
 csym = "\\" !letter any
-known_cmd = ( "sqrt" / "binom" / "sum" / "int" ) !letter
-# unknown_cmd = !known_cmd letter+ !letter
-unknown_cmd = !known_cmd "alpha" !letter
+unknown_cmd = !known_cmd letter+
+
+
+# unitary atomic commands
 any = ~"."s
 letter = ~"[A-Z]"i
 digit = ~"[0-9]"
@@ -34,16 +33,11 @@ ws = (ws_char / comment)*
 ws_char = ~r"\s+"
 comment = ~r"%[^\n]*\n?"
 
-# kernel = (frac_cmd / sqrt_cmd / cword / var / group)
 frac_cmd = "\\frac" !letter ws kernel ws kernel
 
 sqrt_cmd = "\\sqrt" ws (sqrt_with_opt / sqrt_plain)
-
-
-
 # Matches \sqrt[3]{x} or \sqrt[3] x
 sqrt_with_opt = opt_content ws (kernel / cseq)
-
 # Matches \sqrt{x} or \sqrt x
 # sqrt_plain = ( cseq / kernel ) 
 sqrt_plain = (!"[" kernel)
@@ -53,59 +47,28 @@ opt_content = "[" ws (!"]" (expr ws))* "]"
 
 
 
+# \!
+# \#
+# \$
+# \%
+# \&
+# \,
+# \:
+# \;
+# \>
+# \_
+# \{
+# \|
+# \}
+# \,
 
+noarg_cmd = ("zeta" / "yen" / "Xi" / "xi" / "wr" / "wp" / "wedge" / "Vvdash" / "Vert" / "vert" / "veebar" / "vee" / "vdots" / "Vdash" / "vDash" / "vdash" / "varXi" / "varUpsilon" / "vartriangleright" / "vartriangleleft" / "vartriangle" / "varTheta" / "vartheta" / "varsupsetneqq" / "varsupsetneq" / "varsubsetneqq" / "varsubsetneq" / "varSigma" / "varsigma" / "varrho" / "varPsi" / "varpropto" / "varPi" / "varpi" / "varPhi" / "varphi" / "varOmega" / "varnothing" / "varLambda" / "varkappa" / "varGamma" / "varepsilon" / "varDelta" / "urcorner" / "upuparrows" / "uplus" / "upharpoonright" / "upharpoonleft" / "Updownarrow" / "updownarrow" / "Uparrow" / "uparrow" / "unrhd" / "unlhd" / "ulcorner" / "twoheadrightarrow" / "twoheadleftarrow" / "trianglerighteq" / "triangleright" / "triangleq" / "trianglelefteq" / "triangleleft" / "triangledown" / "triangle" / "top" / "to" / "tiny" / "times" / "thinspace" / "thicksim" / "thickapprox" / "Theta" / "theta" / "therefore" / "textstyle" / "TeX" / "tau" / "tanh" / "tan" / "swarrow" / "surd" / "supsetneqq" / "supsetneq" / "supseteqq" / "supseteq" / "Supset" / "supset" / "sup" / "sum" / "succsim" / "succnsim" / "succneqq" / "succnapprox" / "succeq" / "succcurlyeq" / "succapprox" / "succ" / "subsetneqq" / "subsetneq" / "subseteqq" / "subseteq" / "Subset" / "subset" / "strut" / "star" / "square" / "sqsupseteq" / "sqsupset" / "sqsubseteq" / "sqsubset" / "sqcup" / "sqcap" / "sphericalangle" / "spadesuit" / "Space" / "space" / "smile" / "smallsmile" / "smallsetminus" / "smallint" / "smallfrown" / "sinh" / "sin" / "simeq" / "sim" / "Sigma" / "sigma" / "shortparallel" / "shortmid" / "sharp" / "setminus" / "sec" / "searrow" / "scriptstyle" / "scriptsize" / "scriptscriptstyle" / "S" / "rVert" / "rvert" / "rtimes" / "Rsh" / "Rrightarrow" / "rmoustache" / "risingdotseq" / "rightthreetimes" / "rightsquigarrow" / "rightrightarrows" / "rightleftharpoons" / "rightleftarrows" / "rightharpoonup" / "rightharpoondown" / "rightarrowtail" / "Rightarrow" / "rightarrow" / "rho" / "rhd" / "rgroup" / "rfloor" / "restriction" / "Re" / "rceil" / "rbrack" / "rbrace" / "rangle" / "quad" / "qquad" / "Psi" / "psi" / "propto" / "prod" / "prime" / "precsim" / "precnsim" / "precneqq" / "precnapprox" / "preceq" / "preccurlyeq" / "precapprox" / "prec" / "Pr" / "pm" / "pitchfork" / "Pi" / "pi" / "Phi" / "phi" / "perp" / "partial" / "parallel" / "owns" / "otimes" / "oslash" / "oplus" / "ominus" / "omicron" / "Omega" / "omega" / "oint" / "odot" / "nwarrow" / "nVDash" / "nVdash" / "nvDash" / "nvdash" / "nu" / "ntrianglerighteq" / "ntriangleright" / "ntrianglelefteq" / "ntriangleleft" / "nsupseteqq" / "nsupseteq" / "nsucceq" / "nsucc" / "nsubseteqq" / "nsubseteq" / "nsim" / "nshortparallel" / "nshortmid" / "nRightarrow" / "nrightarrow" / "npreceq" / "nprec" / "nparallel" / "nmid" / "nless" / "nleqslant" / "nleqq" / "nleq" / "nLeftrightarrow" / "nleftrightarrow" / "nLeftarrow" / "nleftarrow" / "ni" / "ngtr" / "ngeqslant" / "ngeqq" / "ngeq" / "nexists" / "neq" / "neg" / "nearrow" / "ne" / "ncong" / "natural" / "nabla" / "multimap" / "mu" / "mp" / "models" / "mod" / "min" / "mid" / "mho" / "measuredangle" / "maltese" / "ltimes" / "lt" / "Lsh" / "lrcorner" / "lozenge" / "lor" / "looparrowright" / "looparrowleft" / "Longrightarrow" / "longrightarrow" / "longmapsto" / "Longleftrightarrow" / "longleftrightarrow" / "Longleftarrow" / "longleftarrow" / "log" / "lnsim" / "lneqq" / "lneq" / "lnapprox" / "ln" / "lmoustache" / "llless" / "lll" / "Lleftarrow" / "llcorner" / "ll" / "limsup" / "limits" / "liminf" / "lim" / "lhd" / "lgroup" / "lg" / "lfloor" / "lesssim" / "lessgtr" / "lesseqqgtr" / "lesseqgtr" / "lessdot" / "lessapprox" / "leqslant" / "leqq" / "leq" / "leftthreetimes" / "leftrightsquigarrow" / "leftrightharpoons" / "leftrightarrows" / "Leftrightarrow" / "leftrightarrow" / "leftleftarrows" / "leftharpoonup" / "leftharpoondown" / "leftarrowtail" / "Leftarrow" / "leftarrow" / "leadsto" / "le" / "ldots" / "ldotp" / "lceil" / "lbrack" / "lbrace" / "langle" / "land" / "Lambda" / "lambda" / "ker" / "kappa" / "Join" / "jmath" / "iota" / "intop" / "intercal" / "int" / "infty" / "inf" / "in" / "implies" / "impliedby" / "imath" / "Im" / "iff" / "hslash" / "hookrightarrow" / "hookleftarrow" / "heartsuit" / "hbar" / "gvertneqq" / "gtrsim" / "gtrless" / "gtreqqless" / "gtreqless" / "gtrdot" / "gtrapprox" / "gt" / "gnsim" / "gneqq" / "gneq" / "gnapprox" / "gimel" / "gggtr" / "ggg" / "gg" / "gets" / "geqslant" / "geqq" / "geq" / "ge" / "gcd" / "Gamma" / "gamma" / "Game" / "frown" / "forall" / "flat" / "Finv" / "fallingdotseq" / "exp" / "exists" / "eth" / "eta" / "equiv" / "eqslantless" / "eqslantgtr" / "eqsim" / "eqcirc" / "epsilon" / "enspace" / "emptyset" / "ell" / "downharpoonright" / "downharpoonleft" / "downdownarrows" / "Downarrow" / "downarrow" / "doublecup" / "doublecap" / "doublebarwedge" / "dotso" / "dotsm" / "dotsi" / "dotsc" / "dotsb" / "dots" / "dotplus" / "doteqdot" / "Doteq" / "doteq" / "divideontimes" / "div" / "dim" / "digamma" / "diamondsuit" / "Diamond" / "diamond" / "diagup" / "diagdown" / "det" / "Delta" / "delta" / "deg" / "ddots" / "ddagger" / "dashv" / "dashrightarrow" / "dashleftarrow" / "daleth" / "dagger" / "curvearrowright" / "curvearrowleft" / "curlywedge" / "curlyvee" / "curlyeqsucc" / "curlyeqprec" / "Cup" / "cup" / "csc" / "coth" / "cot" / "cosh" / "cos" / "coprod" / "cong" / "complement" / "colon" / "clubsuit" / "circledS" / "circledR" / "circleddash" / "circledcirc" / "circledast" / "circlearrowright" / "circlearrowleft" / "circeq" / "circ" / "chi" / "checkmark" / "centerdot" / "cdots" / "cdotp" / "cdot" / "Cap" / "cap" / "Bumpeq" / "bumpeq" / "bullet" / "bracevert" / "boxtimes" / "boxplus" / "boxminus" / "boxdot" / "bowtie" / "bot" / "bmod" / "blacktriangleright" / "blacktriangleleft" / "blacktriangledown" / "blacktriangle" / "blacksquare" / "bigwedge" / "bigvee" / "biguplus" / "bigtriangleup" / "bigtriangledown" / "bigstar" / "bigsqcup" / "bigotimes" / "bigoplus" / "bigodot" / "bigcup" / "bigcirc" / "bigcap" / "between" / "beth" / "beta" / "backslash" / "backsimeq" / "backsim" / "backprime" / "backepsilon" / "asymp" / "ast" / "arg" / "arctan" / "arcsin" / "arccos" / "approx" / "angle" / "And" / "amalg" / "alpha" / "aleph") !letter
+infix_cmd = "\\" ( "over" / "atop" / "above" / "overwithdelims" / "atopwithdelims" / "abovewithdelims" / "choose" / "brack" / "brace") !letter
 
+unary_cmd = "\\" unary_cmd_name ws kernel
+unary_cmd_name = ("widetilde" / "widehat" / "vec" / "underline" / "text" / "overline" / "mathrm " / "mathrm" / "mathit" / "mathfrak" / "mathcal" / "mathbf" / "mathbb" / "mathbb" / "hat" / "dot" / "ddot" / "bar") !letter
 
+known_cmd = (noarg_cmd / infix_cmd / unary_cmd_name / binary_cmd_name)
 
-
-cword = "\\" ( known_cmd / unknown_cmd ) !letter
-known_cmd = ( "binom" / "sum" / "int" ) !letter  # removed sqrt and frac since they have custom rules
-unknown_cmd = "alpha"
-
-
-
-
-# "tokens" cword, csym, digit, sym, letter
-# so \over can take:  node \over node
-# \frac (cword/csym/var/group) x
-# \sqrt (cseq)
-# \overline (cword/csym/var/group)
-
-# cseq = cword / cseq
-# comment = ~r"%[^\r\n]*"
-
-# so... we defined csym (commadn sequence), that would amtch any.. but really our node
-# can't just match any cmd seq.. it should match only the subset of valid ones
-# shoudl that be lookahead?
-# \sqrt \frac a b^2_2    #< puts 2s on the outside
-# \sqrt {\frac a b}^2_2    #< puts 2s on the inside of the radical 
-# \frac a {\sqrt b}  # < {} required
-
-# so does \sqrt expect a group?
-# \over seems kinda similar.. consumes everyting after...but even more greedy
-# bizarre, can't do \sqrt \binom n k
-# latex seems to handle it.  
-
-# expr = (triode / diode / monode / env_node)*
-# sub = subscript monode
-# subscript = "_"
-# power = superscript monode
-# superscript = "^"
-# triode = (node sub power) / (node power sub)
-# diode = (node power) / (node sub)
-# node = monode / env_node
-# monode = null ((token) / ("{" null expr null  "}") / (left_bkt null expr null right_bkt)) null
-# env_node = null "\\begin ws {" environment "}" expr "\\end ws {" environment "}" null
-# left_bkt = "\\left" ws bkt_delim
-# right_bkt = "\\right" ws bkt_delim
-# bkt_delim = "(" / ")" / "[" / "]" / "\\{" / "\\}" / "|" / "."
-# environment = "bmatrix" / "matrix" / "align"
-# command = "\\" (letter+ / "\\" / " " / "%" / "#" / "&" / "_" / "{" / "}")
-# token = variable / symbols / digit / command
-# variable = ~"[A-Za-z]"
-# letter = ~"[A-Za-z]"
-# symbols = "+" / "-" / "*" / "/" / "=" / "(" / ")" / "[" / "]" / "|" / "`" / "$" / "'" / "," / "." / ":" / ";" / "@" / "?"
-# digit = "0" / "1" / "2" / "3" / "4" / "5" / "6" / "7" / "8" / "9"
-# null = (comment / ws)*
-# ws = ~"[ \\t\\n\\r]*"
-# comment = ~r"%[^\r\n]*"
+binary_cmd = "\\" binary_cmd_name (ws kernel){2}
+binary_cmd_name = ("underset" / "tfrac" / "tbinom" / "stackrel" / "overset" / "dfrac" / "dbinom" / "cfrac" / "binom") !letter
