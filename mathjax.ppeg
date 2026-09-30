@@ -1,4 +1,4 @@
-node = ws ((expr ws)* (infix_cmd ws (expr ws)?)*)
+node = ws ((expr ws)* (infix_cmd ws (expr ws)*)?)
 expr = (triode / diode / monode)
 triode = ((monode sup monode sub monode) / (monode sub monode sup monode))
 diode = ((monode sup monode ) / (monode sub monode ))
